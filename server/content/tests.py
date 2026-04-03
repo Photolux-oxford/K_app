@@ -26,16 +26,18 @@ class ModelSmokeTests(TestCase):
     def test_availability_slot_creation(self):
         slot = AvailabilitySlot.objects.create(
             date=datetime.date(2026, 6, 1),
-            start_time=datetime.time(10, 0),
-            end_time=datetime.time(12, 0),
+            block='morning',
+            status='available',
         )
         self.assertFalse(slot.is_booked)
+        self.assertEqual(slot.start_time, datetime.time(8, 0))
+        self.assertEqual(slot.end_time, datetime.time(11, 0))
 
     def test_booking_request_creation(self):
         slot = AvailabilitySlot.objects.create(
             date=datetime.date(2026, 6, 1),
-            start_time=datetime.time(10, 0),
-            end_time=datetime.time(12, 0),
+            block='morning',
+            status='available',
         )
         booking = BookingRequest.objects.create(
             customer=self.user,
@@ -87,6 +89,49 @@ class ModelSmokeTests(TestCase):
             body='Hi Kay, I was wondering about the session.',
         )
         self.assertFalse(msg.is_read)
+
+
+class AvailabilitySlotModelTests(TestCase):
+    def test_block_auto_fills_morning_times(self):
+        slot = AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1),
+            block='morning',
+            status='available',
+        )
+        self.assertEqual(slot.start_time, datetime.time(8, 0))
+        self.assertEqual(slot.end_time, datetime.time(11, 0))
+
+    def test_block_auto_fills_afternoon_times(self):
+        slot = AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1),
+            block='afternoon',
+            status='available',
+        )
+        self.assertEqual(slot.start_time, datetime.time(12, 0))
+        self.assertEqual(slot.end_time, datetime.time(15, 0))
+
+    def test_block_auto_fills_evening_times(self):
+        slot = AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1),
+            block='evening',
+            status='potential',
+        )
+        self.assertEqual(slot.start_time, datetime.time(16, 0))
+        self.assertEqual(slot.end_time, datetime.time(20, 0))
+
+    def test_unique_date_block_constraint(self):
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1),
+            block='morning',
+            status='available',
+        )
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            AvailabilitySlot.objects.create(
+                date=datetime.date(2026, 5, 1),
+                block='morning',
+                status='unavailable',
+            )
 
 
 class ServiceAreaTests(TestCase):

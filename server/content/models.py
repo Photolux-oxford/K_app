@@ -1,3 +1,5 @@
+import datetime
+
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -25,17 +27,39 @@ class PortfolioItem(models.Model):
 
 
 class AvailabilitySlot(models.Model):
-    date = models.DateField()
+    BLOCK_CHOICES = [
+        ('morning',   'Morning'),
+        ('afternoon', 'Afternoon'),
+        ('evening',   'Evening'),
+    ]
+    STATUS_CHOICES = [
+        ('available',   'Available'),
+        ('potential',   'Potential'),
+        ('unavailable', 'Unavailable'),
+    ]
+    BLOCK_TIMES = {
+        'morning':   (datetime.time(8, 0),  datetime.time(11, 0)),
+        'afternoon': (datetime.time(12, 0), datetime.time(15, 0)),
+        'evening':   (datetime.time(16, 0), datetime.time(20, 0)),
+    }
+
+    date       = models.DateField()
+    block      = models.CharField(max_length=10, choices=BLOCK_CHOICES)
     start_time = models.TimeField()
-    end_time = models.TimeField()
-    is_booked = models.BooleanField(default=False)
+    end_time   = models.TimeField()
+    status     = models.CharField(max_length=15, choices=STATUS_CHOICES)
+    is_booked  = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ['date', 'start_time']
-        unique_together = ['date', 'start_time']
+        ordering = ['date', 'block']
+        unique_together = ['date', 'block']
+
+    def save(self, *args, **kwargs):
+        self.start_time, self.end_time = self.BLOCK_TIMES[self.block]
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.date} {self.start_time}–{self.end_time}"
+        return f"{self.date} {self.block} ({self.status})"
 
 
 class BookingRequest(models.Model):
