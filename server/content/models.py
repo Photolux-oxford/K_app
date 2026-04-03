@@ -37,6 +37,7 @@ class AvailabilitySlot(models.Model):
         ('potential',   'Potential'),
         ('unavailable', 'Unavailable'),
     ]
+    # Auto-filled into start_time/end_time by save() — times are hardcoded business rules
     BLOCK_TIMES = {
         'morning':   (datetime.time(8, 0),  datetime.time(11, 0)),
         'afternoon': (datetime.time(12, 0), datetime.time(15, 0)),
@@ -44,9 +45,9 @@ class AvailabilitySlot(models.Model):
     }
 
     date       = models.DateField()
-    block      = models.CharField(max_length=10, choices=BLOCK_CHOICES)
-    start_time = models.TimeField()
-    end_time   = models.TimeField()
+    block      = models.CharField(max_length=20, choices=BLOCK_CHOICES)
+    start_time = models.TimeField(editable=False)
+    end_time   = models.TimeField(editable=False)
     status     = models.CharField(max_length=15, choices=STATUS_CHOICES)
     is_booked  = models.BooleanField(default=False)
 
@@ -55,7 +56,13 @@ class AvailabilitySlot(models.Model):
         unique_together = ['date', 'block']
 
     def save(self, *args, **kwargs):
-        self.start_time, self.end_time = self.BLOCK_TIMES[self.block]
+        times = self.BLOCK_TIMES.get(self.block)
+        if times is None:
+            raise ValueError(
+                f"Invalid block value '{self.block}'. "
+                f"Must be one of: {list(self.BLOCK_TIMES)}"
+            )
+        self.start_time, self.end_time = times
         super().save(*args, **kwargs)
 
     def __str__(self):

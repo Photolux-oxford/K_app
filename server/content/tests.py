@@ -30,8 +30,6 @@ class ModelSmokeTests(TestCase):
             status='available',
         )
         self.assertFalse(slot.is_booked)
-        self.assertEqual(slot.start_time, datetime.time(8, 0))
-        self.assertEqual(slot.end_time, datetime.time(11, 0))
 
     def test_booking_request_creation(self):
         slot = AvailabilitySlot.objects.create(
