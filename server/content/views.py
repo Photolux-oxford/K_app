@@ -356,12 +356,14 @@ def customer_availability(request):
     try:
         year, mon = month.split('-')
         year, mon = int(year), int(mon)
+        if not (1 <= mon <= 12):
+            raise ValueError
     except (ValueError, AttributeError):
         return Response({'error': 'month must be YYYY-MM'}, status=400)
 
     slots = AvailabilitySlot.objects.filter(
         date__year=year, date__month=mon,
-    ).exclude(status='unavailable')
+    ).exclude(status='unavailable').order_by('date', 'block')
 
     return Response([{
         'id': s.id,
