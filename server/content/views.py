@@ -349,6 +349,33 @@ def admin_availability_delete(request, pk):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def customer_availability(request):
+    month = request.query_params.get('month')
+    if not month:
+        return Response({'error': 'month param required (YYYY-MM)'}, status=400)
+    try:
+        year, mon = month.split('-')
+        year, mon = int(year), int(mon)
+    except (ValueError, AttributeError):
+        return Response({'error': 'month must be YYYY-MM'}, status=400)
+
+    slots = AvailabilitySlot.objects.filter(
+        date__year=year, date__month=mon,
+    ).exclude(status='unavailable')
+
+    return Response([{
+        'id': s.id,
+        'date': s.date.isoformat(),
+        'block': s.block,
+        'start_time': s.start_time.strftime('%H:%M'),
+        'end_time': s.end_time.strftime('%H:%M'),
+        'status': s.status,
+        'is_booked': s.is_booked,
+    } for s in slots])
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def portfolio_list(request):
     """
     Returns all portfolio items ordered by `order` then `-created_at`.

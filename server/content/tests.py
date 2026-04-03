@@ -285,3 +285,49 @@ class AdminAvailabilityAPITests(TestCase):
         res = self.client.delete(f'/api/admin/availability/{slot.id}/')
         self.assertEqual(res.status_code, 400)
         self.assertEqual(AvailabilitySlot.objects.count(), 1)
+
+
+class CustomerAvailabilityAPITests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+
+    def test_requires_month_param(self):
+        res = self.client.get('/api/availability/')
+        self.assertEqual(res.status_code, 400)
+
+    def test_returns_available_and_potential_slots_only(self):
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1), block='morning', status='available'
+        )
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1), block='afternoon', status='potential'
+        )
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1), block='evening', status='unavailable'
+        )
+        res = self.client.get('/api/availability/?month=2026-05')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data), 2)
+        statuses = {s['status'] for s in res.data}
+        self.assertNotIn('unavailable', statuses)
+
+    def test_returns_booked_slots_with_is_booked_true(self):
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1), block='morning',
+            status='available', is_booked=True
+        )
+        res = self.client.get('/api/availability/?month=2026-05')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data), 1)
+        self.assertTrue(res.data[0]['is_booked'])
+
+    def test_filters_by_month(self):
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1), block='morning', status='available'
+        )
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 6, 1), block='morning', status='available'
+        )
+        res = self.client.get('/api/availability/?month=2026-05')
+        self.assertEqual(len(res.data), 1)
+        self.assertEqual(res.data[0]['date'], '2026-05-01')
