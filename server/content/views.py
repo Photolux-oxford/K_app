@@ -1,6 +1,7 @@
 import urllib.request
 import urllib.error
 import json
+import datetime as dt
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
@@ -312,7 +313,6 @@ def admin_availability_upsert(request):
         return Response({'error': f'status must be one of {valid_statuses}.'}, status=400)
 
     try:
-        import datetime as dt
         date_obj = dt.date.fromisoformat(date_str)
     except ValueError:
         return Response({'error': 'date must be YYYY-MM-DD.'}, status=400)
