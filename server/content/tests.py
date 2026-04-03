@@ -200,3 +200,88 @@ class ServiceAreaAPITests(TestCase):
         res = self.client.post('/api/service-area/check/', {'postcode': 'OX1 3DP'}, format='json')
         # postcodes.io is external; accept 200 or 503
         self.assertIn(res.status_code, [200, 503])
+
+
+class AdminAvailabilityAPITests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.staff = User.objects.create_user(
+            username='kay@test.com', email='kay@test.com',
+            password='pass', is_staff=True
+        )
+        self.customer = User.objects.create_user(
+            username='cust@test.com', email='cust@test.com',
+            password='pass'
+        )
+
+    def test_list_requires_staff(self):
+        self.client.force_authenticate(user=self.customer)
+        res = self.client.get('/api/admin/availability/?month=2026-05')
+        self.assertEqual(res.status_code, 403)
+
+    def test_list_requires_month_param(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.get('/api/admin/availability/')
+        self.assertEqual(res.status_code, 400)
+
+    def test_list_returns_slots_for_month(self):
+        self.client.force_authenticate(user=self.staff)
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1), block='morning', status='available'
+        )
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 6, 1), block='morning', status='available'
+        )
+        res = self.client.get('/api/admin/availability/?month=2026-05')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data), 1)
+        self.assertEqual(res.data[0]['block'], 'morning')
+
+    def test_upsert_creates_slot(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.post('/api/admin/availability/upsert/', {
+            'date': '2026-05-01', 'block': 'morning', 'status': 'available'
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(AvailabilitySlot.objects.count(), 1)
+        slot = AvailabilitySlot.objects.first()
+        self.assertEqual(slot.start_time, datetime.time(8, 0))
+        self.assertEqual(slot.end_time, datetime.time(11, 0))
+
+    def test_upsert_updates_existing_slot(self):
+        self.client.force_authenticate(user=self.staff)
+        AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1), block='morning', status='available'
+        )
+        res = self.client.post('/api/admin/availability/upsert/', {
+            'date': '2026-05-01', 'block': 'morning', 'status': 'unavailable'
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(AvailabilitySlot.objects.count(), 1)
+        self.assertEqual(AvailabilitySlot.objects.first().status, 'unavailable')
+
+    def test_upsert_rejects_invalid_block(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.post('/api/admin/availability/upsert/', {
+            'date': '2026-05-01', 'block': 'lunchtime', 'status': 'available'
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_delete_removes_slot(self):
+        self.client.force_authenticate(user=self.staff)
+        slot = AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1), block='morning', status='available'
+        )
+        res = self.client.delete(f'/api/admin/availability/{slot.id}/')
+        self.assertEqual(res.status_code, 204)
+        self.assertEqual(AvailabilitySlot.objects.count(), 0)
+
+    def test_delete_rejects_booked_slot(self):
+        self.client.force_authenticate(user=self.staff)
+        slot = AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 1), block='morning',
+            status='available', is_booked=True
+        )
+        res = self.client.delete(f'/api/admin/availability/{slot.id}/')
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(AvailabilitySlot.objects.count(), 1)
