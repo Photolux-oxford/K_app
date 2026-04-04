@@ -34,6 +34,8 @@ export async function apiPostForm<T>(path: string, formData: FormData): Promise<
   return data as T;
 }
 
+export interface ApiError { status: number; data: unknown; }
+
 export const api = {
   get:    <T>(path: string)                  => request<T>('GET',    path),
   post:   <T>(path: string, body: unknown)   => request<T>('POST',   path, body),

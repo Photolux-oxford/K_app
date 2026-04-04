@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { api, apiPostForm } from '../lib/api';
 
 interface UploadedFile {
+  id: string;
   file: File;
   status: 'pending' | 'uploading' | 'done' | 'error';
   progress: number;  // 0-100 (simulated — fetch doesn't expose XHR progress)
@@ -43,13 +44,13 @@ export function EditingPage() {
       if (err) { toast.error(err); continue; }
       // Avoid duplicates by name+size
       if (files.some(u => u.file.name === f.name && u.file.size === f.size)) continue;
-      additions.push({ file: f, status: 'pending', progress: 0 });
+      additions.push({ id: crypto.randomUUID(), file: f, status: 'pending', progress: 0 });
     }
     setFiles(prev => [...prev, ...additions]);
   }
 
-  function removeFile(index: number) {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+  function removeFile(id: string) {
+    setFiles(prev => prev.filter(f => f.id !== id));
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -74,20 +75,21 @@ export function EditingPage() {
       // Step 2: Upload each file in sequence
       let anyFailed = false;
       for (let i = 0; i < files.length; i++) {
-        setFiles(prev => prev.map((f, idx) =>
-          idx === i ? { ...f, status: 'uploading', progress: 50 } : f
+        const fileId = files[i].id;
+        setFiles(prev => prev.map(f =>
+          f.id === fileId ? { ...f, status: 'uploading', progress: 50 } : f
         ));
         try {
           const formData = new FormData();
           formData.append('file', files[i].file);
           await apiPostForm(`/editing-requests/${id}/files/`, formData);
-          setFiles(prev => prev.map((f, idx) =>
-            idx === i ? { ...f, status: 'done', progress: 100 } : f
+          setFiles(prev => prev.map(f =>
+            f.id === fileId ? { ...f, status: 'done', progress: 100 } : f
           ));
         } catch {
           anyFailed = true;
-          setFiles(prev => prev.map((f, idx) =>
-            idx === i ? { ...f, status: 'error', progress: 0, errorMsg: 'Upload failed' } : f
+          setFiles(prev => prev.map(f =>
+            f.id === fileId ? { ...f, status: 'error', progress: 0, errorMsg: 'Upload failed' } : f
           ));
         }
       }
@@ -205,8 +207,8 @@ export function EditingPage() {
                 {/* File list */}
                 {files.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {files.map((uf, i) => (
-                      <div key={i} style={{
+                    {files.map((uf) => (
+                      <div key={uf.id} style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '7px 10px',
                         background: uf.status === 'error' ? '#fef2f2' : uf.status === 'done' ? '#f0fdf4' : '#fff',
@@ -226,7 +228,7 @@ export function EditingPage() {
                           {uf.status === 'done'     && <span style={{ color: '#22c55e', fontSize: 12 }}>✓</span>}
                           {uf.status === 'error'    && <span style={{ color: '#ef4444', fontSize: 11 }}>{uf.errorMsg}</span>}
                           {uf.status !== 'uploading' && uf.status !== 'done' && (
-                            <button onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>✕</button>
+                            <button onClick={() => removeFile(uf.id)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>✕</button>
                           )}
                         </div>
                       </div>

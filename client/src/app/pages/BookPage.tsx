@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '../lib/api';
+import type { ApiError } from '../lib/api';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -71,9 +72,8 @@ export function BookPage() {
       });
       toast.success('Booking request submitted! Kay will confirm within 48 hours.');
       navigate('/dashboard');
-    } catch (err: unknown) {
-      const apiErr = err as { status?: number };
-      if (apiErr?.status === 409) {
+    } catch (err) {
+      if ((err as ApiError).status === 409) {
         toast.error('Sorry — that slot was just taken. Please choose another.');
         setStep(1);
         setSelectedSlot(null);
