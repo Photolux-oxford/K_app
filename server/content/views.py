@@ -1,3 +1,4 @@
+import os
 import urllib.request
 import urllib.error
 import json
@@ -396,25 +397,25 @@ def create_booking(request):
     if session_type not in valid_types:
         return Response({'error': f'session_type must be one of {valid_types}.'}, status=400)
 
-    try:
-        with transaction.atomic():
-            slot = AvailabilitySlot.objects.select_for_update().get(pk=slot_id)
-            if slot.is_booked:
-                return Response({'error': 'This slot has already been booked.'}, status=409)
-
-            booking = BookingRequest.objects.create(
-                customer=request.user,
-                session_type=session_type,
-                location=location,
-                postcode=postcode,
-                notes=notes,
-                slot=slot,
-                status='pending',
-            )
-            slot.is_booked = True
-            slot.save()
-    except AvailabilitySlot.DoesNotExist:
+    if not AvailabilitySlot.objects.filter(pk=slot_id).exists():
         return Response({'error': 'Slot not found.'}, status=404)
+
+    with transaction.atomic():
+        slot = AvailabilitySlot.objects.select_for_update().get(pk=slot_id)
+        if slot.is_booked:
+            return Response({'error': 'This slot has already been booked.'}, status=409)
+
+        booking = BookingRequest.objects.create(
+            customer=request.user,
+            session_type=session_type,
+            location=location,
+            postcode=postcode,
+            notes=notes,
+            slot=slot,
+            status='pending',
+        )
+        slot.is_booked = True
+        slot.save()
 
     return Response({'id': booking.id, 'status': booking.status}, status=201)
 
@@ -439,7 +440,6 @@ def create_editing_request(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def upload_editing_file(request, pk):
-    import os
     try:
         editing = EditingRequest.objects.get(pk=pk, customer=request.user)
     except EditingRequest.DoesNotExist:
