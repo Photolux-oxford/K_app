@@ -11,6 +11,9 @@ from rest_framework.response import Response
 
 from .models import AvailabilitySlot, BookingRequest, EditingFile, EditingRequest, Message, PortfolioItem, ServiceArea
 
+UPLOAD_MAX_SIZE = 25 * 1024 * 1024  # 25 MB
+UPLOAD_ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.cr2', '.nef', '.arw'}
+
 
 def _point_in_polygon(lat, lng, polygon):
     """
@@ -397,13 +400,17 @@ def create_booking(request):
     if session_type not in valid_types:
         return Response({'error': f'session_type must be one of {valid_types}.'}, status=400)
 
-    if not AvailabilitySlot.objects.filter(pk=slot_id).exists():
-        return Response({'error': 'Slot not found.'}, status=404)
-
     with transaction.atomic():
-        slot = AvailabilitySlot.objects.select_for_update().get(pk=slot_id)
+        try:
+            slot = AvailabilitySlot.objects.select_for_update().get(pk=slot_id)
+        except AvailabilitySlot.DoesNotExist:
+            return Response({'error': 'Slot not found.'}, status=404)
+
         if slot.is_booked:
             return Response({'error': 'This slot has already been booked.'}, status=409)
+
+        if slot.status not in ('available', 'potential'):
+            return Response({'error': 'This slot is not available for booking.'}, status=409)
 
         booking = BookingRequest.objects.create(
             customer=request.user,
@@ -429,6 +436,11 @@ def create_editing_request(request):
     if not style_notes or not turnaround:
         return Response({'error': 'style_notes and turnaround are required.'}, status=400)
 
+    if len(turnaround) > 200:
+        return Response({'error': 'turnaround must be 200 characters or fewer.'}, status=400)
+    if len(style_notes) > 2000:
+        return Response({'error': 'style_notes must be 2000 characters or fewer.'}, status=400)
+
     editing = EditingRequest.objects.create(
         customer=request.user,
         style_notes=style_notes,
@@ -449,15 +461,17 @@ def upload_editing_file(request, pk):
     if not file:
         return Response({'error': 'file is required.'}, status=400)
 
-    MAX_SIZE = 25 * 1024 * 1024  # 25 MB
-    if file.size > MAX_SIZE:
+    MAX_FILES_PER_REQUEST = 50
+    if EditingFile.objects.filter(editing_request=editing).count() >= MAX_FILES_PER_REQUEST:
+        return Response({'error': f'Maximum {MAX_FILES_PER_REQUEST} files per request.'}, status=400)
+
+    if file.size > UPLOAD_MAX_SIZE:
         return Response({'error': 'File exceeds 25 MB limit.'}, status=400)
 
-    allowed_exts = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.cr2', '.nef', '.arw'}
     ext = os.path.splitext(file.name)[1].lower()
-    if ext not in allowed_exts:
+    if ext not in UPLOAD_ALLOWED_EXTS:
         return Response(
-            {'error': f'File type not allowed. Accepted: {", ".join(sorted(allowed_exts))}'},
+            {'error': f'File type not allowed. Accepted: {", ".join(sorted(UPLOAD_ALLOWED_EXTS))}'},
             status=400
         )
 
