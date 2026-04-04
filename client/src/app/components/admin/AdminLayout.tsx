@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 type AdminTab = 'dashboard' | 'bookings' | 'availability' | 'editing' | 'service-area';
@@ -12,7 +13,7 @@ const TABS: { label: string; tab: AdminTab; path: string }[] = [
 
 interface AdminLayoutProps {
   activeTab: AdminTab;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function AdminLayout({ activeTab, children }: AdminLayoutProps) {

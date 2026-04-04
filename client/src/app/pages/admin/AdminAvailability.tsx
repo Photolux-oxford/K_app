@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { api } from '../../lib/api';
 
@@ -140,15 +140,29 @@ export function AdminAvailability() {
   const [pendingChanges, setPendingChanges] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const fetchGenRef = useRef(0);
 
   const monthKey = toYYYYMM(year, month);
 
   useEffect(() => {
     setSelectedDate(null);
     setPendingChanges({});
+    setLoading(true);
+    const gen = ++fetchGenRef.current;
     api.get<Slot[]>(`/admin/availability/?month=${monthKey}`)
-      .then(setSlots)
-      .catch(() => setError('Failed to load availability.'));
+      .then(data => {
+        if (fetchGenRef.current === gen) {
+          setSlots(data);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (fetchGenRef.current === gen) {
+          setError('Failed to load availability.');
+          setLoading(false);
+        }
+      });
   }, [monthKey]);
 
   const slotsByDate: Record<string, Slot[]> = {};
@@ -176,6 +190,7 @@ export function AdminAvailability() {
   async function saveDay(date: string) {
     setSaving(true);
     setError('');
+    const gen = fetchGenRef.current;
 
     // Snapshot for revert on error
     const slotSnapshot = slots;
@@ -247,7 +262,7 @@ export function AdminAvailability() {
 
       // Refresh with server-confirmed data
       const updated = await api.get<Slot[]>(`/admin/availability/?month=${monthKey}`);
-      setSlots(updated);
+      if (fetchGenRef.current === gen) setSlots(updated);
     } catch {
       // Revert on error
       setSlots(slotSnapshot);
@@ -298,53 +313,62 @@ export function AdminAvailability() {
             <button onClick={nextMonth} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#555', padding: '4px 8px' }}>›</button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
-            {DAY_LABELS.map(d => (
-              <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#aaa', padding: '4px 0' }}>{d}</div>
-            ))}
-          </div>
+          {loading ? (
+            <p style={{ fontSize: 12, color: '#aaa', textAlign: 'center', padding: '24px 0', margin: 0 }}>Loading…</p>
+          ) : (
+            <>
+              {/* Day-of-week headers */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
+                {DAY_LABELS.map(d => (
+                  <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#aaa', padding: '4px 0' }}>{d}</div>
+                ))}
+              </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
-            {Array.from({ length: startDow }).map((_, i) => <div key={`empty-${i}`} />)}
-            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
-              const dateStr = toDateStr(year, month, day);
-              const isSelected = selectedDate === dateStr;
-              const hasPending = hasPendingForDate(dateStr);
+              {/* Day cells */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+                {Array.from({ length: startDow }).map((_, i) => <div key={`empty-${i}`} />)}
+                {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                  const dateStr = toDateStr(year, month, day);
+                  const isSelected = selectedDate === dateStr;
+                  const hasPending = hasPendingForDate(dateStr);
 
-              return (
-                <div
-                  key={day}
-                  onClick={() => setSelectedDate(isSelected ? null : dateStr)}
-                  style={{
-                    padding: '6px 4px 8px',
-                    border: isSelected ? '2px solid #111' : '1px solid rgba(0,0,0,0.06)',
-                    borderRadius: 4, cursor: 'pointer',
-                    background: isSelected ? '#fafafa' : '#fff',
-                    textAlign: 'center', position: 'relative',
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: isSelected ? 600 : 400, color: '#111', marginBottom: 4 }}>
-                    {day}
-                    {hasPending && <span style={{ color: '#f59e0b', fontSize: 10, marginLeft: 2 }}>•</span>}
-                  </div>
-                  <div style={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                    {BLOCKS.map(block => {
-                      const st = getEffectiveStatus(dateStr, block);
-                      return (
-                        <span key={block} title={`${BLOCK_LABELS[block]}: ${st}`} style={{ width: 6, height: 6, borderRadius: '50%', background: DOT_COLORS[st] ?? DOT_COLORS.unset, display: 'inline-block' }} />
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  return (
+                    <div
+                      key={day}
+                      onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                      style={{
+                        padding: '6px 4px 8px',
+                        border: isSelected ? '2px solid #111' : '1px solid rgba(0,0,0,0.06)',
+                        borderRadius: 4, cursor: 'pointer',
+                        background: isSelected ? '#fafafa' : '#fff',
+                        textAlign: 'center', position: 'relative',
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: isSelected ? 600 : 400, color: '#111', marginBottom: 4 }}>
+                        {day}
+                        {hasPending && <span style={{ color: '#f59e0b', fontSize: 10, marginLeft: 2 }}>•</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                        {BLOCKS.map(block => {
+                          const st = getEffectiveStatus(dateStr, block);
+                          return (
+                            <span key={block} title={`${BLOCK_LABELS[block]}: ${st}`} style={{ width: 6, height: 6, borderRadius: '50%', background: DOT_COLORS[st] ?? DOT_COLORS.unset, display: 'inline-block' }} />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
+          {/* Legend */}
           <div style={{ display: 'flex', gap: 12, marginTop: 16, flexWrap: 'wrap' }}>
             {Object.entries(DOT_COLORS).map(([key, color]) => (
               <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#555' }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
-                {key.charAt(0).toUpperCase() + key.slice(1)}
+                {STATUS_BADGE[key]?.label ?? key}
               </span>
             ))}
           </div>
