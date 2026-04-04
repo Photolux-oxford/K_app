@@ -7,6 +7,8 @@ urlpatterns = [
     path('availability/', views.customer_availability),
     path('portfolio/', views.portfolio_list),
     path('bookings/', views.create_booking),
+    path('editing-requests/',                views.create_editing_request),
+    path('editing-requests/<int:pk>/files/', views.upload_editing_file),
 
     # Admin endpoints
     path('admin/stats/', views.admin_stats),

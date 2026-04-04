@@ -407,3 +407,118 @@ class CreateBookingAPITests(TestCase):
             'postcode': 'OX1 1AA',
         }, format='json')
         self.assertEqual(res.status_code, 404)
+
+
+class CreateEditingRequestAPITests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.customer = User.objects.create_user(
+            username='cust@test.com', email='cust@test.com', password='pass'
+        )
+
+    def test_requires_authentication(self):
+        res = self.client.post('/api/editing-requests/', {
+            'style_notes': 'warm tones', 'turnaround': '1 week'
+        }, format='json')
+        self.assertEqual(res.status_code, 401)
+
+    def test_creates_editing_request(self):
+        self.client.force_authenticate(user=self.customer)
+        res = self.client.post('/api/editing-requests/', {
+            'style_notes': 'warm tones, natural light',
+            'turnaround': 'within 2 weeks',
+        }, format='json')
+        self.assertEqual(res.status_code, 201)
+        self.assertIn('id', res.data)
+        self.assertEqual(res.data['status'], 'requested')
+
+    def test_rejects_missing_style_notes(self):
+        self.client.force_authenticate(user=self.customer)
+        res = self.client.post('/api/editing-requests/', {
+            'turnaround': '1 week'
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_rejects_missing_turnaround(self):
+        self.client.force_authenticate(user=self.customer)
+        res = self.client.post('/api/editing-requests/', {
+            'style_notes': 'warm tones'
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_upload_file_to_editing_request(self):
+        self.client.force_authenticate(user=self.customer)
+        editing = EditingRequest.objects.create(
+            customer=self.customer,
+            style_notes='test notes',
+            turnaround='1 week',
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        fake_image = SimpleUploadedFile(
+            'photo.jpg', b'fake-jpeg-content', content_type='image/jpeg'
+        )
+        res = self.client.post(
+            f'/api/editing-requests/{editing.id}/files/',
+            {'file': fake_image},
+            format='multipart',
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertIn('id', res.data)
+        self.assertEqual(EditingFile.objects.filter(editing_request=editing).count(), 1)
+
+    def test_upload_rejects_oversized_file(self):
+        self.client.force_authenticate(user=self.customer)
+        editing = EditingRequest.objects.create(
+            customer=self.customer,
+            style_notes='test notes',
+            turnaround='1 week',
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        big_file = SimpleUploadedFile(
+            'big.jpg',
+            b'x' * (25 * 1024 * 1024 + 1),
+            content_type='image/jpeg'
+        )
+        res = self.client.post(
+            f'/api/editing-requests/{editing.id}/files/',
+            {'file': big_file},
+            format='multipart',
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_upload_rejects_disallowed_file_type(self):
+        self.client.force_authenticate(user=self.customer)
+        editing = EditingRequest.objects.create(
+            customer=self.customer,
+            style_notes='test notes',
+            turnaround='1 week',
+        )
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        bad_file = SimpleUploadedFile(
+            'virus.exe', b'bad content', content_type='application/octet-stream'
+        )
+        res = self.client.post(
+            f'/api/editing-requests/{editing.id}/files/',
+            {'file': bad_file},
+            format='multipart',
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_upload_rejects_other_customers_request(self):
+        other = User.objects.create_user(
+            username='other@test.com', email='other@test.com', password='pass'
+        )
+        editing = EditingRequest.objects.create(
+            customer=other,
+            style_notes='test notes',
+            turnaround='1 week',
+        )
+        self.client.force_authenticate(user=self.customer)
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        fake_image = SimpleUploadedFile('photo.jpg', b'data', content_type='image/jpeg')
+        res = self.client.post(
+            f'/api/editing-requests/{editing.id}/files/',
+            {'file': fake_image},
+            format='multipart',
+        )
+        self.assertEqual(res.status_code, 404)

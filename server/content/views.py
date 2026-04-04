@@ -8,7 +8,7 @@ from django.db import transaction
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
-from .models import AvailabilitySlot, BookingRequest, EditingRequest, Message, PortfolioItem, ServiceArea
+from .models import AvailabilitySlot, BookingRequest, EditingFile, EditingRequest, Message, PortfolioItem, ServiceArea
 
 
 def _point_in_polygon(lat, lng, polygon):
@@ -417,6 +417,56 @@ def create_booking(request):
         return Response({'error': 'Slot not found.'}, status=404)
 
     return Response({'id': booking.id, 'status': booking.status}, status=201)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_editing_request(request):
+    style_notes = request.data.get('style_notes', '').strip()
+    turnaround  = request.data.get('turnaround', '').strip()
+
+    if not style_notes or not turnaround:
+        return Response({'error': 'style_notes and turnaround are required.'}, status=400)
+
+    editing = EditingRequest.objects.create(
+        customer=request.user,
+        style_notes=style_notes,
+        turnaround=turnaround,
+    )
+    return Response({'id': editing.id, 'status': editing.status}, status=201)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_editing_file(request, pk):
+    import os
+    try:
+        editing = EditingRequest.objects.get(pk=pk, customer=request.user)
+    except EditingRequest.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=404)
+
+    file = request.FILES.get('file')
+    if not file:
+        return Response({'error': 'file is required.'}, status=400)
+
+    MAX_SIZE = 25 * 1024 * 1024  # 25 MB
+    if file.size > MAX_SIZE:
+        return Response({'error': 'File exceeds 25 MB limit.'}, status=400)
+
+    allowed_exts = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.cr2', '.nef', '.arw'}
+    ext = os.path.splitext(file.name)[1].lower()
+    if ext not in allowed_exts:
+        return Response(
+            {'error': f'File type not allowed. Accepted: {", ".join(sorted(allowed_exts))}'},
+            status=400
+        )
+
+    editing_file = EditingFile.objects.create(editing_request=editing, file=file)
+    return Response({
+        'id': editing_file.id,
+        'file_name': os.path.basename(editing_file.file.name),
+        'uploaded_at': editing_file.uploaded_at.isoformat(),
+    }, status=201)
 
 
 @api_view(['GET'])
