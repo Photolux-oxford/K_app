@@ -64,7 +64,7 @@ export function BookPage() {
     try {
       await api.post('/bookings/', {
         slot_id:      selectedSlot.slot.id,
-        session_type: details.session_type.toLowerCase(),
+        session_type: details.session_type.toLowerCase(), // backend SESSION_TYPES uses lowercase keys
         location:     details.location,
         postcode:     details.postcode,
         notes:        details.notes,

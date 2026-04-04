@@ -72,6 +72,7 @@ export function EditingPage() {
       );
 
       // Step 2: Upload each file in sequence
+      let anyFailed = false;
       for (let i = 0; i < files.length; i++) {
         setFiles(prev => prev.map((f, idx) =>
           idx === i ? { ...f, status: 'uploading', progress: 50 } : f
@@ -84,14 +85,20 @@ export function EditingPage() {
             idx === i ? { ...f, status: 'done', progress: 100 } : f
           ));
         } catch {
+          anyFailed = true;
           setFiles(prev => prev.map((f, idx) =>
             idx === i ? { ...f, status: 'error', progress: 0, errorMsg: 'Upload failed' } : f
           ));
         }
       }
 
-      toast.success('Editing request submitted! Kay will review and send you a quote.');
-      navigate('/dashboard');
+      if (anyFailed) {
+        toast.error('Some files failed to upload. Please retry the failed files or submit without them.');
+        setSubmitting(false);
+      } else {
+        toast.success('Editing request submitted! Kay will review and send you a quote.');
+        navigate('/dashboard');
+      }
     } catch {
       toast.error('Failed to submit request. Please try again.');
       setSubmitting(false);
