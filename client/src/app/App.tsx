@@ -5,6 +5,10 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ServiceAreaPage } from './pages/ServiceAreaPage';
 import { ServiceAreaEditor } from './components/admin/ServiceAreaEditor';
+import { AdminDashboard } from './pages/admin/AdminDashboard';
+import { AdminBookings } from './pages/admin/AdminBookings';
+import { AdminEditing } from './pages/admin/AdminEditing';
+import { AdminAvailability } from './pages/admin/AdminAvailability';
 import { Cursor } from './components/Cursor';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
@@ -60,7 +64,22 @@ export default function App() {
           {/* Admin routes (Kay only) */}
           <Route path="/admin" element={
             <ProtectedRoute requireStaff>
-              <ComingSoon label="Admin Dashboard" />
+              <AdminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/bookings" element={
+            <ProtectedRoute requireStaff>
+              <AdminBookings />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/availability" element={
+            <ProtectedRoute requireStaff>
+              <AdminAvailability />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/editing" element={
+            <ProtectedRoute requireStaff>
+              <AdminEditing />
             </ProtectedRoute>
           } />
           <Route path="/admin/service-area" element={
@@ -68,11 +87,6 @@ export default function App() {
               <div style={{ padding: '80px 48px' }}>
                 <ServiceAreaEditor />
               </div>
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/*" element={
-            <ProtectedRoute requireStaff>
-              <ComingSoon label="Admin" />
             </ProtectedRoute>
           } />
 
