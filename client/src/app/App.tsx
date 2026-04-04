@@ -9,6 +9,8 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminBookings } from './pages/admin/AdminBookings';
 import { AdminEditing } from './pages/admin/AdminEditing';
 import { AdminAvailability } from './pages/admin/AdminAvailability';
+import { BookPage }    from './pages/BookPage';
+import { EditingPage } from './pages/EditingPage';
 import { Cursor } from './components/Cursor';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
@@ -56,8 +58,8 @@ export default function App() {
           <Route path="/service-area" element={<ServiceAreaPage />} />
 
           {/* Customer (login required) */}
-          <Route path="/book"      element={<ProtectedRoute><ComingSoon label="Book a Session" /></ProtectedRoute>} />
-          <Route path="/editing"   element={<ProtectedRoute><ComingSoon label="Photo Editing" /></ProtectedRoute>} />
+          <Route path="/book"      element={<ProtectedRoute><BookPage /></ProtectedRoute>} />
+          <Route path="/editing"   element={<ProtectedRoute><EditingPage /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><ComingSoon label="Dashboard" /></ProtectedRoute>} />
           <Route path="/messages"  element={<ProtectedRoute><ComingSoon label="Messages" /></ProtectedRoute>} />
 
