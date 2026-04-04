@@ -25,11 +25,11 @@ const DOT_COLORS: Record<string, string> = {
   unset:       '#d1d5db',
 };
 
-const STATUS_CYCLE: Record<string, string | null> = {
+const STATUS_CYCLE: Record<string, string> = {
   unset:       'available',
   available:   'potential',
   potential:   'unavailable',
-  unavailable: null,
+  unavailable: 'unset',
 };
 
 const STATUS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
@@ -170,21 +170,71 @@ export function AdminAvailability() {
     const current = getEffectiveStatus(date, block);
     if (current === 'booked') return;
     const next = STATUS_CYCLE[current] ?? 'unset';
-    setPendingChanges(prev => ({ ...prev, [`${date}__${block}`]: next ?? 'unset' }));
+    setPendingChanges(prev => ({ ...prev, [`${date}__${block}`]: next }));
   }
 
   async function saveDay(date: string) {
     setSaving(true);
     setError('');
+
+    // Snapshot for revert on error
+    const slotSnapshot = slots;
+    const pendingSnapshot = { ...pendingChanges };
+
+    // Optimistically apply changes to local slots state
+    const dayChanges = BLOCKS.reduce((acc, block) => {
+      const key = `${date}__${block}`;
+      if (key in pendingChanges) acc[block] = pendingChanges[key];
+      return acc;
+    }, {} as Record<string, string>);
+
+    setSlots(prev => {
+      const withoutDay = prev.filter(s => s.date !== date);
+      const existingDay = prev.filter(s => s.date === date);
+      const updated: Slot[] = [];
+      for (const block of BLOCKS) {
+        const newStatus = dayChanges[block];
+        if (!newStatus || newStatus === 'unset') continue; // will be deleted
+        const existing = existingDay.find(s => s.block === block);
+        if (existing) {
+          updated.push({ ...existing, status: newStatus as Slot['status'] });
+        } else {
+          // Create a temporary optimistic slot (id=0, times filled from block)
+          const TIMES: Record<string, { start: string; end: string }> = {
+            morning:   { start: '08:00', end: '11:00' },
+            afternoon: { start: '12:00', end: '15:00' },
+            evening:   { start: '16:00', end: '20:00' },
+          };
+          updated.push({
+            id: 0,
+            date,
+            block: block as Slot['block'],
+            start_time: TIMES[block].start,
+            end_time: TIMES[block].end,
+            status: newStatus as Slot['status'],
+            is_booked: false,
+          });
+        }
+      }
+      return [...withoutDay, ...updated];
+    });
+
+    // Clear pending for this date optimistically
+    setPendingChanges(prev => {
+      const next = { ...prev };
+      for (const block of BLOCKS) delete next[`${date}__${block}`];
+      return next;
+    });
+
     try {
-      const daySlots = slotsByDate[date] ?? [];
+      const daySlots = slotSnapshot.filter(s => s.date === date);
       const slotById: Record<string, Slot> = {};
       for (const s of daySlots) slotById[s.block] = s;
 
-      for (const block of BLOCKS) {
+      await Promise.all(BLOCKS.map(async block => {
         const key = `${date}__${block}`;
-        if (!(key in pendingChanges)) continue;
-        const newStatus = pendingChanges[key];
+        if (!(key in pendingSnapshot)) return;
+        const newStatus = pendingSnapshot[key];
         if (newStatus === 'unset') {
           const existing = slotById[block];
           if (existing) {
@@ -193,15 +243,15 @@ export function AdminAvailability() {
         } else {
           await api.post('/admin/availability/upsert/', { date, block, status: newStatus });
         }
-      }
+      }));
+
+      // Refresh with server-confirmed data
       const updated = await api.get<Slot[]>(`/admin/availability/?month=${monthKey}`);
       setSlots(updated);
-      setPendingChanges(prev => {
-        const next = { ...prev };
-        for (const block of BLOCKS) delete next[`${date}__${block}`];
-        return next;
-      });
     } catch {
+      // Revert on error
+      setSlots(slotSnapshot);
+      setPendingChanges(pendingSnapshot);
       setError('Failed to save changes.');
     } finally {
       setSaving(false);
