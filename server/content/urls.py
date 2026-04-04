@@ -6,6 +6,7 @@ urlpatterns = [
     path('service-area/check/', views.service_area_check),
     path('availability/', views.customer_availability),
     path('portfolio/', views.portfolio_list),
+    path('bookings/', views.create_booking),
 
     # Admin endpoints
     path('admin/stats/', views.admin_stats),

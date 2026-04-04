@@ -4,7 +4,8 @@ import json
 import datetime as dt
 
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
+from django.db import transaction
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from .models import AvailabilitySlot, BookingRequest, EditingRequest, Message, PortfolioItem, ServiceArea
@@ -374,6 +375,48 @@ def customer_availability(request):
         'status': s.status,
         'is_booked': s.is_booked,
     } for s in slots])
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_booking(request):
+    slot_id      = request.data.get('slot_id')
+    session_type = request.data.get('session_type', '').strip()
+    location     = request.data.get('location', '').strip()
+    postcode     = request.data.get('postcode', '').strip()
+    notes        = request.data.get('notes', '').strip()
+
+    if not slot_id or not session_type or not location or not postcode:
+        return Response(
+            {'error': 'slot_id, session_type, location, and postcode are required.'},
+            status=400
+        )
+
+    valid_types = [s[0] for s in BookingRequest.SESSION_TYPES]
+    if session_type not in valid_types:
+        return Response({'error': f'session_type must be one of {valid_types}.'}, status=400)
+
+    try:
+        with transaction.atomic():
+            slot = AvailabilitySlot.objects.select_for_update().get(pk=slot_id)
+            if slot.is_booked:
+                return Response({'error': 'This slot has already been booked.'}, status=409)
+
+            booking = BookingRequest.objects.create(
+                customer=request.user,
+                session_type=session_type,
+                location=location,
+                postcode=postcode,
+                notes=notes,
+                slot=slot,
+                status='pending',
+            )
+            slot.is_booked = True
+            slot.save()
+    except AvailabilitySlot.DoesNotExist:
+        return Response({'error': 'Slot not found.'}, status=404)
+
+    return Response({'id': booking.id, 'status': booking.status}, status=201)
 
 
 @api_view(['GET'])

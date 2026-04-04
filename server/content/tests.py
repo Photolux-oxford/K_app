@@ -331,3 +331,79 @@ class CustomerAvailabilityAPITests(TestCase):
         res = self.client.get('/api/availability/?month=2026-05')
         self.assertEqual(len(res.data), 1)
         self.assertEqual(res.data[0]['date'], '2026-05-01')
+
+
+class CreateBookingAPITests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.customer = User.objects.create_user(
+            username='cust@test.com', email='cust@test.com', password='pass'
+        )
+        self.slot = AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 5, 10),
+            block='morning',
+            status='available',
+        )
+
+    def test_requires_authentication(self):
+        res = self.client.post('/api/bookings/', {
+            'slot_id': self.slot.id,
+            'session_type': 'portrait',
+            'location': 'Oxford',
+            'postcode': 'OX1 1AA',
+        }, format='json')
+        self.assertEqual(res.status_code, 401)
+
+    def test_creates_booking_and_marks_slot_booked(self):
+        self.client.force_authenticate(user=self.customer)
+        res = self.client.post('/api/bookings/', {
+            'slot_id': self.slot.id,
+            'session_type': 'portrait',
+            'location': 'Christchurch Meadow',
+            'postcode': 'OX1 1AA',
+            'notes': 'morning light preferred',
+        }, format='json')
+        self.assertEqual(res.status_code, 201)
+        self.assertIn('id', res.data)
+        self.assertEqual(res.data['status'], 'pending')
+        self.slot.refresh_from_db()
+        self.assertTrue(self.slot.is_booked)
+
+    def test_rejects_already_booked_slot(self):
+        self.client.force_authenticate(user=self.customer)
+        self.slot.is_booked = True
+        self.slot.save()
+        res = self.client.post('/api/bookings/', {
+            'slot_id': self.slot.id,
+            'session_type': 'portrait',
+            'location': 'Oxford',
+            'postcode': 'OX1 1AA',
+        }, format='json')
+        self.assertEqual(res.status_code, 409)
+
+    def test_rejects_invalid_session_type(self):
+        self.client.force_authenticate(user=self.customer)
+        res = self.client.post('/api/bookings/', {
+            'slot_id': self.slot.id,
+            'session_type': 'circus',
+            'location': 'Oxford',
+            'postcode': 'OX1 1AA',
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_rejects_missing_required_fields(self):
+        self.client.force_authenticate(user=self.customer)
+        res = self.client.post('/api/bookings/', {
+            'slot_id': self.slot.id,
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_rejects_nonexistent_slot(self):
+        self.client.force_authenticate(user=self.customer)
+        res = self.client.post('/api/bookings/', {
+            'slot_id': 99999,
+            'session_type': 'portrait',
+            'location': 'Oxford',
+            'postcode': 'OX1 1AA',
+        }, format='json')
+        self.assertEqual(res.status_code, 404)
