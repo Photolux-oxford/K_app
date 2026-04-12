@@ -538,3 +538,149 @@ class CreateEditingRequestAPITests(TestCase):
             format='multipart',
         )
         self.assertEqual(res.status_code, 404)
+
+
+class MessageAPITests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.customer = User.objects.create_user(
+            username='cust@example.com', email='cust@example.com', password='pass'
+        )
+        self.other_customer = User.objects.create_user(
+            username='other@example.com', email='other@example.com', password='pass'
+        )
+        self.staff = User.objects.create_user(
+            username='staff@example.com', email='staff@example.com', password='pass',
+            is_staff=True
+        )
+        self.editing = EditingRequest.objects.create(
+            customer=self.customer,
+            style_notes='warm tones, natural light',
+            turnaround='2 weeks',
+        )
+        self.booking = BookingRequest.objects.create(
+            customer=self.customer,
+            session_type='portrait',
+            location='Christchurch Meadow',
+            postcode='OX1 1DP',
+        )
+
+    def _token(self, user):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        return str(RefreshToken.for_user(user).access_token)
+
+    def test_threads_requires_auth(self):
+        resp = self.client.get('/api/messages/threads/')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_customer_threads_returns_grouped_structure(self):
+        Message.objects.create(
+            thread_type='editing', thread_id=self.editing.id,
+            sender=self.staff, body='Hello', read_by_recipient=False
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._token(self.customer)}')
+        resp = self.client.get('/api/messages/threads/')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn('editing', data)
+        self.assertIn('booking', data)
+        thread = data['editing'][0]
+        self.assertEqual(thread['thread_id'], self.editing.id)
+        self.assertEqual(thread['unread_count'], 1)
+        self.assertIn('subject', thread)
+        self.assertIn('last_message_body', thread)
+
+    def test_staff_threads_returns_flat_list(self):
+        Message.objects.create(
+            thread_type='editing', thread_id=self.editing.id,
+            sender=self.customer, body='Hi Kay', read_by_recipient=False
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._token(self.staff)}')
+        resp = self.client.get('/api/messages/threads/')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIsInstance(data, list)
+        self.assertEqual(data[0]['thread_type'], 'editing')
+        self.assertEqual(data[0]['thread_id'], self.editing.id)
+        self.assertIn('customer_email', data[0])
+
+    def test_customer_cannot_read_other_customers_thread(self):
+        other_editing = EditingRequest.objects.create(
+            customer=self.other_customer,
+            style_notes='B&W', turnaround='1 week',
+        )
+        Message.objects.create(
+            thread_type='editing', thread_id=other_editing.id,
+            sender=self.staff, body='Private', read_by_recipient=False
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._token(self.customer)}')
+        resp = self.client.get(f'/api/messages/?thread_type=editing&thread_id={other_editing.id}')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_send_message_creates_db_row(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._token(self.customer)}')
+        resp = self.client.post('/api/messages/send/', {
+            'thread_type': 'editing',
+            'thread_id': self.editing.id,
+            'body': 'Looking good!',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(Message.objects.filter(body='Looking good!').exists())
+
+    def test_send_message_empty_body_rejected(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._token(self.customer)}')
+        resp = self.client.post('/api/messages/send/', {
+            'thread_type': 'editing',
+            'thread_id': self.editing.id,
+            'body': '   ',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_mark_read_marks_correct_messages(self):
+        # Staff sends 2 messages to customer
+        m1 = Message.objects.create(
+            thread_type='editing', thread_id=self.editing.id,
+            sender=self.staff, body='A', read_by_recipient=False
+        )
+        m2 = Message.objects.create(
+            thread_type='editing', thread_id=self.editing.id,
+            sender=self.staff, body='B', read_by_recipient=False
+        )
+        # Other thread — should not be touched
+        other_editing = EditingRequest.objects.create(
+            customer=self.customer, style_notes='Other', turnaround='1w'
+        )
+        m3 = Message.objects.create(
+            thread_type='editing', thread_id=other_editing.id,
+            sender=self.staff, body='C', read_by_recipient=False
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._token(self.customer)}')
+        resp = self.client.post('/api/messages/read/', {
+            'thread_type': 'editing',
+            'thread_id': self.editing.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 200)
+        m1.refresh_from_db(); m2.refresh_from_db(); m3.refresh_from_db()
+        self.assertTrue(m1.read_by_recipient)
+        self.assertTrue(m2.read_by_recipient)
+        self.assertFalse(m3.read_by_recipient)  # different thread, untouched
+
+    def test_message_list_includes_system_message(self):
+        Message.objects.create(
+            thread_type='editing', thread_id=self.editing.id,
+            sender=self.staff, body='Hi', read_by_recipient=False
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._token(self.customer)}')
+        resp = self.client.get(f'/api/messages/?thread_type=editing&thread_id={self.editing.id}')
+        self.assertEqual(resp.status_code, 200)
+        messages = resp.json()
+        self.assertTrue(messages[0]['is_system'])
+
+    def test_staff_can_read_any_thread(self):
+        Message.objects.create(
+            thread_type='editing', thread_id=self.editing.id,
+            sender=self.customer, body='Hello Kay', read_by_recipient=False
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._token(self.staff)}')
+        resp = self.client.get(f'/api/messages/?thread_type=editing&thread_id={self.editing.id}')
+        self.assertEqual(resp.status_code, 200)

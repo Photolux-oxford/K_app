@@ -6,6 +6,7 @@ import datetime as dt
 
 from rest_framework.decorators import api_view, permission_classes
 from django.db import transaction
+from django.db.models import Max
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
@@ -505,3 +506,234 @@ def portfolio_list(request):
             'order': item.order,
         })
     return Response(items)
+
+
+def _thread_subject(thread_type, thread_id):
+    """Derive a display subject for a thread without storing it."""
+    if thread_type == 'editing':
+        try:
+            req = EditingRequest.objects.get(pk=thread_id)
+            return req.style_notes[:60]
+        except EditingRequest.DoesNotExist:
+            return f'Editing #{thread_id}'
+    else:
+        try:
+            req = BookingRequest.objects.get(pk=thread_id)
+            return f"{req.session_type.capitalize()} · {req.location}"
+        except BookingRequest.DoesNotExist:
+            return f'Booking #{thread_id}'
+
+
+def _system_message(thread_type, thread_id):
+    """Return the auto-opener system message dict (not a stored Message row)."""
+    if thread_type == 'editing':
+        try:
+            req = EditingRequest.objects.prefetch_related('files').get(pk=thread_id)
+            file_count = req.files.count()
+            body = (
+                f"Editing Request #{req.id} — {req.style_notes}. "
+                f"Turnaround: {req.turnaround}. {file_count} photo{'s' if file_count != 1 else ''} uploaded."
+            )
+        except EditingRequest.DoesNotExist:
+            body = f"Editing Request #{thread_id}"
+    else:
+        try:
+            req = BookingRequest.objects.get(pk=thread_id)
+            slot_date = req.slot.date.isoformat() if req.slot else 'TBC'
+            slot_block = req.slot.block if req.slot else ''
+            body = (
+                f"Booking Request #{req.id} — {req.session_type.capitalize()} at "
+                f"{req.location} ({req.postcode}). Date: {slot_date} {slot_block}."
+            )
+        except BookingRequest.DoesNotExist:
+            body = f"Booking Request #{thread_id}"
+    return {
+        'id': None,
+        'is_system': True,
+        'sender_email': None,
+        'body': body,
+        'timestamp': None,
+        'is_own': False,
+    }
+
+
+def _user_owns_thread(user, thread_type, thread_id):
+    """Return True if the user is the customer for this thread."""
+    if thread_type == 'editing':
+        return EditingRequest.objects.filter(pk=thread_id, customer=user).exists()
+    else:
+        return BookingRequest.objects.filter(pk=thread_id, customer=user).exists()
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def message_threads(request):
+    user = request.user
+
+    if user.is_staff:
+        # Flat list: all threads with messages, sorted by last message time desc
+        thread_qs = (
+            Message.objects
+            .values('thread_type', 'thread_id')
+            .annotate(last_message_at=Max('timestamp'))
+            .order_by('-last_message_at')
+        )
+        result = []
+        for row in thread_qs:
+            tt = row['thread_type']
+            tid = row['thread_id']
+            last_msg = Message.objects.filter(thread_type=tt, thread_id=tid).order_by('-timestamp').first()
+            unread = Message.objects.filter(
+                thread_type=tt, thread_id=tid, read_by_recipient=False
+            ).exclude(sender=user).count()
+            customer_email = ''
+            if tt == 'editing':
+                try:
+                    customer_email = EditingRequest.objects.get(pk=tid).customer.email
+                except EditingRequest.DoesNotExist:
+                    customer_email = 'unknown'
+            else:
+                try:
+                    customer_email = BookingRequest.objects.get(pk=tid).customer.email
+                except BookingRequest.DoesNotExist:
+                    customer_email = 'unknown'
+            result.append({
+                'thread_type': tt,
+                'thread_id': tid,
+                'customer_email': customer_email,
+                'subject': _thread_subject(tt, tid),
+                'last_message_body': last_msg.body if last_msg else '',
+                'last_message_at': last_msg.timestamp.isoformat() if last_msg else None,
+                'unread_count': unread,
+            })
+        return Response(result)
+
+    else:
+        # Grouped by type: only the customer's own threads
+        result = {'editing': [], 'booking': []}
+        for tt in ('editing', 'booking'):
+            if tt == 'editing':
+                owned_ids = list(EditingRequest.objects.filter(customer=user).values_list('id', flat=True))
+            else:
+                owned_ids = list(BookingRequest.objects.filter(customer=user).values_list('id', flat=True))
+
+            thread_qs = (
+                Message.objects
+                .filter(thread_type=tt, thread_id__in=owned_ids)
+                .values('thread_id')
+                .annotate(last_message_at=Max('timestamp'))
+                .order_by('-last_message_at')
+            )
+            for row in thread_qs:
+                tid = row['thread_id']
+                last_msg = Message.objects.filter(thread_type=tt, thread_id=tid).order_by('-timestamp').first()
+                unread = Message.objects.filter(
+                    thread_type=tt, thread_id=tid, read_by_recipient=False
+                ).exclude(sender=user).count()
+                result[tt].append({
+                    'thread_id': tid,
+                    'subject': _thread_subject(tt, tid),
+                    'last_message_body': last_msg.body if last_msg else '',
+                    'last_message_at': last_msg.timestamp.isoformat() if last_msg else None,
+                    'unread_count': unread,
+                })
+        return Response(result)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def message_list(request):
+    thread_type = request.query_params.get('thread_type', '')
+    thread_id = request.query_params.get('thread_id', '')
+
+    if thread_type not in ('booking', 'editing') or not thread_id:
+        return Response({'error': 'thread_type and thread_id are required.'}, status=400)
+
+    try:
+        thread_id = int(thread_id)
+    except ValueError:
+        return Response({'error': 'thread_id must be an integer.'}, status=400)
+
+    # Access control: customers can only read their own thread
+    if not request.user.is_staff:
+        if not _user_owns_thread(request.user, thread_type, thread_id):
+            return Response({'error': 'Access denied.'}, status=403)
+
+    messages = Message.objects.filter(thread_type=thread_type, thread_id=thread_id).select_related('sender')
+
+    result = [_system_message(thread_type, thread_id)]
+    for m in messages:
+        result.append({
+            'id': m.id,
+            'is_system': False,
+            'sender_email': m.sender.email,
+            'body': m.body,
+            'timestamp': m.timestamp.isoformat(),
+            'is_own': m.sender_id == request.user.id,
+        })
+    return Response(result)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_message(request):
+    thread_type = request.data.get('thread_type', '')
+    thread_id = request.data.get('thread_id')
+    body = request.data.get('body', '').strip()
+
+    if thread_type not in ('booking', 'editing'):
+        return Response({'error': 'thread_type must be booking or editing.'}, status=400)
+    if not thread_id:
+        return Response({'error': 'thread_id is required.'}, status=400)
+    if not body:
+        return Response({'error': 'body is required.'}, status=400)
+
+    try:
+        thread_id = int(thread_id)
+    except (ValueError, TypeError):
+        return Response({'error': 'thread_id must be an integer.'}, status=400)
+
+    if not request.user.is_staff:
+        if not _user_owns_thread(request.user, thread_type, thread_id):
+            return Response({'error': 'Access denied.'}, status=403)
+
+    msg = Message.objects.create(
+        thread_type=thread_type,
+        thread_id=thread_id,
+        sender=request.user,
+        body=body,
+    )
+    return Response({
+        'id': msg.id,
+        'sender_email': msg.sender.email,
+        'body': msg.body,
+        'timestamp': msg.timestamp.isoformat(),
+        'is_own': True,
+    }, status=201)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def mark_thread_read(request):
+    thread_type = request.data.get('thread_type', '')
+    thread_id = request.data.get('thread_id')
+
+    if thread_type not in ('booking', 'editing') or not thread_id:
+        return Response({'error': 'thread_type and thread_id are required.'}, status=400)
+
+    try:
+        thread_id = int(thread_id)
+    except (ValueError, TypeError):
+        return Response({'error': 'thread_id must be an integer.'}, status=400)
+
+    if not request.user.is_staff:
+        if not _user_owns_thread(request.user, thread_type, thread_id):
+            return Response({'error': 'Access denied.'}, status=403)
+
+    Message.objects.filter(
+        thread_type=thread_type,
+        thread_id=thread_id,
+        read_by_recipient=False,
+    ).exclude(sender=request.user).update(read_by_recipient=True)
+
+    return Response({'status': 'ok'})

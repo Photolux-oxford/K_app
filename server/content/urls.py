@@ -10,6 +10,12 @@ urlpatterns = [
     path('editing-requests/',                views.create_editing_request),
     path('editing-requests/<int:pk>/files/', views.upload_editing_file),
 
+    # Message endpoints
+    path('messages/threads/', views.message_threads),
+    path('messages/', views.message_list),
+    path('messages/send/', views.send_message),
+    path('messages/read/', views.mark_thread_read),
+
     # Admin endpoints
     path('admin/stats/', views.admin_stats),
     path('admin/bookings/', views.admin_bookings_list),
