@@ -86,7 +86,23 @@ class ModelSmokeTests(TestCase):
             sender=self.user,
             body='Hi Kay, I was wondering about the session.',
         )
-        self.assertFalse(msg.is_read)
+        self.assertFalse(msg.read_by_recipient)
+
+    def test_message_read_by_recipient_default_false(self):
+        booking = BookingRequest.objects.create(
+            customer=self.user,
+            session_type='portrait',
+            location='Oxford',
+            postcode='OX1 1AA',
+        )
+        msg = Message.objects.create(
+            thread_type='booking',
+            thread_id=booking.id,
+            sender=self.user,
+            body='Hello',
+        )
+        self.assertFalse(msg.read_by_recipient)
+        self.assertFalse(hasattr(msg, 'is_read'))
 
 
 class AvailabilitySlotModelTests(TestCase):
