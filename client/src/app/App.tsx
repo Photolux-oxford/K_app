@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -9,6 +10,8 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminBookings } from './pages/admin/AdminBookings';
 import { AdminEditing } from './pages/admin/AdminEditing';
 import { AdminAvailability } from './pages/admin/AdminAvailability';
+import { AdminMessages } from './pages/admin/AdminMessages';
+import { MessagesPage } from './pages/MessagesPage';
 import { BookPage }    from './pages/BookPage';
 import { EditingPage } from './pages/EditingPage';
 import { Cursor } from './components/Cursor';
@@ -34,68 +37,64 @@ function HomePage() {
   );
 }
 
-// Placeholder pages — replaced in later plans
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ fontSize: 14, color: '#888', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
-        {label} — coming soon
-      </p>
-    </div>
-  );
-}
-
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Cursor />
-        <Routes>
-          {/* Public */}
-          <Route path="/"            element={<HomePage />} />
-          <Route path="/login"       element={<LoginPage />} />
-          <Route path="/register"    element={<RegisterPage />} />
-          <Route path="/service-area" element={<ServiceAreaPage />} />
+      <NotificationProvider>
+        <BrowserRouter>
+          <Cursor />
+          <Routes>
+            {/* Public */}
+            <Route path="/"            element={<HomePage />} />
+            <Route path="/login"       element={<LoginPage />} />
+            <Route path="/register"    element={<RegisterPage />} />
+            <Route path="/service-area" element={<ServiceAreaPage />} />
 
-          {/* Customer (login required) */}
-          <Route path="/book"      element={<ProtectedRoute><BookPage /></ProtectedRoute>} />
-          <Route path="/editing"   element={<ProtectedRoute><EditingPage /></ProtectedRoute>} />
-          <Route path="/dashboard" element={<ProtectedRoute><ComingSoon label="Dashboard" /></ProtectedRoute>} />
-          <Route path="/messages"  element={<ProtectedRoute><ComingSoon label="Messages" /></ProtectedRoute>} />
+            {/* Customer (login required) */}
+            <Route path="/book"      element={<ProtectedRoute><BookPage /></ProtectedRoute>} />
+            <Route path="/editing"   element={<ProtectedRoute><EditingPage /></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><div style={{ padding: 40 }}>Dashboard coming soon</div></ProtectedRoute>} />
+            <Route path="/messages"  element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
 
-          {/* Admin routes (Kay only) */}
-          <Route path="/admin" element={
-            <ProtectedRoute requireStaff>
-              <AdminDashboard />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/bookings" element={
-            <ProtectedRoute requireStaff>
-              <AdminBookings />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/availability" element={
-            <ProtectedRoute requireStaff>
-              <AdminAvailability />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/editing" element={
-            <ProtectedRoute requireStaff>
-              <AdminEditing />
-            </ProtectedRoute>
-          } />
-          <Route path="/admin/service-area" element={
-            <ProtectedRoute requireStaff>
-              <div style={{ padding: '80px 48px' }}>
-                <ServiceAreaEditor />
-              </div>
-            </ProtectedRoute>
-          } />
+            {/* Admin routes (Kay only) */}
+            <Route path="/admin" element={
+              <ProtectedRoute requireStaff>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/bookings" element={
+              <ProtectedRoute requireStaff>
+                <AdminBookings />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/availability" element={
+              <ProtectedRoute requireStaff>
+                <AdminAvailability />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/editing" element={
+              <ProtectedRoute requireStaff>
+                <AdminEditing />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/messages" element={
+              <ProtectedRoute requireStaff>
+                <AdminMessages />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/service-area" element={
+              <ProtectedRoute requireStaff>
+                <div style={{ padding: '80px 48px' }}>
+                  <ServiceAreaEditor />
+                </div>
+              </ProtectedRoute>
+            } />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </NotificationProvider>
     </AuthProvider>
   );
 }
