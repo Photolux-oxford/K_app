@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useNotificationContext } from '../../context/NotificationContext';
 
-type AdminTab = 'dashboard' | 'bookings' | 'availability' | 'editing' | 'service-area';
+type AdminTab = 'dashboard' | 'bookings' | 'availability' | 'messages' | 'editing' | 'service-area';
 
 const TABS: { label: string; tab: AdminTab; path: string }[] = [
   { label: 'Dashboard',    tab: 'dashboard',    path: '/admin' },
   { label: 'Bookings',     tab: 'bookings',     path: '/admin/bookings' },
   { label: 'Availability', tab: 'availability', path: '/admin/availability' },
+  { label: 'Messages',    tab: 'messages',     path: '/admin/messages' },
   { label: 'Editing',      tab: 'editing',      path: '/admin/editing' },
   { label: 'Service Area', tab: 'service-area', path: '/admin/service-area' },
 ];
@@ -18,6 +20,7 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ activeTab, children }: AdminLayoutProps) {
   const navigate = useNavigate();
+  const { unreadCount } = useNotificationContext();
 
   return (
     <div style={{ minHeight: '100vh', background: '#fafafa', fontFamily: "'Helvetica Neue', Arial, sans-serif" }}>
@@ -75,11 +78,23 @@ export function AdminLayout({ activeTab, children }: AdminLayoutProps) {
                     paddingBottom: 3,
                     borderBottom: isActive ? '1px solid #111' : '1px solid transparent',
                     transition: 'color 0.2s, border-color 0.2s',
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
                   }}
                   onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = '#111'; }}
                   onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = '#888'; }}
                 >
                   {label}
+                  {tab === 'messages' && unreadCount > 0 && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 15, height: 15,
+                      background: '#111', color: '#fff',
+                      borderRadius: '50%',
+                      fontSize: 8, fontWeight: 700,
+                    }}>
+                      {unreadCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotificationContext } from '../context/NotificationContext';
 import gsap from 'gsap';
 
 const NAV_LINKS = [
@@ -12,6 +13,7 @@ const NAV_LINKS = [
 
 export function Header() {
   const { user, logout } = useAuth();
+  const { unreadCount } = useNotificationContext();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -153,6 +155,46 @@ export function Header() {
             }}>
               Editing
             </Link>
+            {user && (
+              <Link
+                to="/messages"
+                className="hidden md:inline"
+                style={{
+                  fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                  fontSize: 12, fontWeight: 500, letterSpacing: '0.08em',
+                  textTransform: 'uppercase', color: '#111', textDecoration: 'none',
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                }}
+              >
+                Messages
+                {unreadCount > 0 && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 16, height: 16,
+                    background: '#111', color: '#fff',
+                    borderRadius: '50%',
+                    fontSize: 9, fontWeight: 700,
+                  }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </Link>
+            )}
+
+            {/* Admin link — desktop only, staff only */}
+            {user?.is_staff && (
+              <Link to="/admin" className="hidden md:inline" style={{
+                fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                fontSize: 12, fontWeight: 500, letterSpacing: '0.08em',
+                textTransform: 'uppercase', color: '#888', textDecoration: 'none',
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = '#111')}
+              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = '#888')}
+              >
+                Admin
+              </Link>
+            )}
 
             <div className="hidden md:block" style={{ width: 1, height: 16, background: '#ddd' }} />
 
@@ -287,6 +329,46 @@ export function Header() {
           >
             Submit for Editing
           </Link>
+          {user && (
+            <Link
+              to="/messages"
+              onClick={closeMenu}
+              style={{
+                padding: '13px 40px',
+                border: '1px solid #111', color: '#111',
+                fontSize: 11, fontWeight: 600, letterSpacing: '0.15em',
+                textTransform: 'uppercase', textDecoration: 'none',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              Messages
+              {unreadCount > 0 && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 16, height: 16,
+                  background: '#111', color: '#fff',
+                  borderRadius: '50%',
+                  fontSize: 9, fontWeight: 700,
+                }}>
+                  {unreadCount}
+                </span>
+              )}
+            </Link>
+          )}
+          {user?.is_staff && (
+            <Link
+              to="/admin"
+              onClick={closeMenu}
+              style={{
+                padding: '10px 0',
+                fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                fontSize: 11, fontWeight: 500, letterSpacing: '0.12em',
+                textTransform: 'uppercase', color: '#aaa', textDecoration: 'none',
+              }}
+            >
+              Admin Panel
+            </Link>
+          )}
         </div>
 
         {/* Auth links — mobile overlay only */}
