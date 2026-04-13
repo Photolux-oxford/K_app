@@ -92,7 +92,7 @@ export function ChatPanel({ threadType, threadId, isAdmin }: ChatPanelProps) {
   const lastOwnIndex = chatMessages.reduce((acc, m, i) => m.is_own ? i : acc, -1);
   const firstUnreadIndex = lastOwnIndex >= 0
     ? chatMessages.findIndex((m, i) => i > lastOwnIndex && !m.is_own)
-    : -1;
+    : chatMessages.findIndex(m => !m.is_own);
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: FONT }}>
@@ -106,7 +106,7 @@ export function ChatPanel({ threadType, threadId, isAdmin }: ChatPanelProps) {
         <div style={{ fontSize: 14, fontWeight: 500, color: '#111' }}>
           {meta?.subject ?? '…'}
         </div>
-        {(meta?.status || meta?.quoted_price) && (
+        {threadType === 'editing' && (meta?.status || meta?.quoted_price) && (
           <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>
             {meta.status && `Status: ${meta.status}`}
             {meta.status && meta.quoted_price && ' · '}
