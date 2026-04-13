@@ -568,74 +568,114 @@ def _user_owns_thread(user, thread_type, thread_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def message_threads(request):
+    from django.db.models import Count, OuterRef, Subquery, TextField
     user = request.user
 
     if user.is_staff:
-        # Flat list: all threads with messages, sorted by last message time desc
-        thread_qs = (
+        last_body_subq = Message.objects.filter(
+            thread_type=OuterRef('thread_type'),
+            thread_id=OuterRef('thread_id'),
+        ).order_by('-timestamp').values('body')[:1]
+
+        thread_qs = list(
             Message.objects
             .values('thread_type', 'thread_id')
-            .annotate(last_message_at=Max('timestamp'))
+            .annotate(
+                last_message_at=Max('timestamp'),
+                last_message_body=Subquery(last_body_subq, output_field=TextField()),
+            )
             .order_by('-last_message_at')
         )
+
+        editing_ids = [r['thread_id'] for r in thread_qs if r['thread_type'] == 'editing']
+        booking_ids = [r['thread_id'] for r in thread_qs if r['thread_type'] == 'booking']
+        editing_map = {e.id: e for e in EditingRequest.objects.filter(pk__in=editing_ids).select_related('customer')}
+        booking_map = {b.id: b for b in BookingRequest.objects.filter(pk__in=booking_ids).select_related('customer')}
+
+        unread_rows = (
+            Message.objects
+            .filter(read_by_recipient=False)
+            .exclude(sender=user)
+            .values('thread_type', 'thread_id')
+            .annotate(unread=Count('id'))
+        )
+        unread_map = {(r['thread_type'], r['thread_id']): r['unread'] for r in unread_rows}
+
         result = []
         for row in thread_qs:
             tt = row['thread_type']
             tid = row['thread_id']
-            last_msg = Message.objects.filter(thread_type=tt, thread_id=tid).order_by('-timestamp').first()
-            unread = Message.objects.filter(
-                thread_type=tt, thread_id=tid, read_by_recipient=False
-            ).exclude(sender=user).count()
-            customer_email = ''
             if tt == 'editing':
-                try:
-                    customer_email = EditingRequest.objects.get(pk=tid).customer.email
-                except EditingRequest.DoesNotExist:
-                    customer_email = 'unknown'
+                req = editing_map.get(tid)
+                customer_email = req.customer.email if req else 'unknown'
+                subject = req.style_notes[:60] if req else f'Editing #{tid}'
             else:
-                try:
-                    customer_email = BookingRequest.objects.get(pk=tid).customer.email
-                except BookingRequest.DoesNotExist:
-                    customer_email = 'unknown'
+                req = booking_map.get(tid)
+                customer_email = req.customer.email if req else 'unknown'
+                subject = f"{req.session_type.capitalize()} · {req.location}" if req else f'Booking #{tid}'
             result.append({
                 'thread_type': tt,
                 'thread_id': tid,
                 'customer_email': customer_email,
-                'subject': _thread_subject(tt, tid),
-                'last_message_body': last_msg.body if last_msg else '',
-                'last_message_at': last_msg.timestamp.isoformat() if last_msg else None,
-                'unread_count': unread,
+                'subject': subject,
+                'last_message_body': row['last_message_body'] or '',
+                'last_message_at': row['last_message_at'].isoformat() if row['last_message_at'] else None,
+                'unread_count': unread_map.get((tt, tid), 0),
             })
         return Response(result)
 
     else:
-        # Grouped by type: only the customer's own threads
+        from django.db.models import Count, OuterRef, Subquery, TextField
         result = {'editing': [], 'booking': []}
         for tt in ('editing', 'booking'):
             if tt == 'editing':
-                owned_ids = list(EditingRequest.objects.filter(customer=user).values_list('id', flat=True))
+                owned = {e.id: e for e in EditingRequest.objects.filter(customer=user)}
             else:
-                owned_ids = list(BookingRequest.objects.filter(customer=user).values_list('id', flat=True))
+                owned = {b.id: b for b in BookingRequest.objects.filter(customer=user)}
 
-            thread_qs = (
+            owned_ids = list(owned.keys())
+            if not owned_ids:
+                continue
+
+            thread_qs = list(
                 Message.objects
                 .filter(thread_type=tt, thread_id__in=owned_ids)
                 .values('thread_id')
-                .annotate(last_message_at=Max('timestamp'))
+                .annotate(
+                    last_message_at=Max('timestamp'),
+                    last_message_body=Subquery(
+                        Message.objects.filter(
+                            thread_type=tt,
+                            thread_id=OuterRef('thread_id'),
+                        ).order_by('-timestamp').values('body')[:1],
+                        output_field=TextField(),
+                    ),
+                )
                 .order_by('-last_message_at')
             )
+
+            unread_rows = (
+                Message.objects
+                .filter(thread_type=tt, thread_id__in=owned_ids, read_by_recipient=False)
+                .exclude(sender=user)
+                .values('thread_id')
+                .annotate(unread=Count('id'))
+            )
+            unread_map = {r['thread_id']: r['unread'] for r in unread_rows}
+
             for row in thread_qs:
                 tid = row['thread_id']
-                last_msg = Message.objects.filter(thread_type=tt, thread_id=tid).order_by('-timestamp').first()
-                unread = Message.objects.filter(
-                    thread_type=tt, thread_id=tid, read_by_recipient=False
-                ).exclude(sender=user).count()
+                req = owned.get(tid)
+                if tt == 'editing':
+                    subject = req.style_notes[:60] if req else f'Editing #{tid}'
+                else:
+                    subject = f"{req.session_type.capitalize()} · {req.location}" if req else f'Booking #{tid}'
                 result[tt].append({
                     'thread_id': tid,
-                    'subject': _thread_subject(tt, tid),
-                    'last_message_body': last_msg.body if last_msg else '',
-                    'last_message_at': last_msg.timestamp.isoformat() if last_msg else None,
-                    'unread_count': unread,
+                    'subject': subject,
+                    'last_message_body': row['last_message_body'] or '',
+                    'last_message_at': row['last_message_at'].isoformat() if row['last_message_at'] else None,
+                    'unread_count': unread_map.get(tid, 0),
                 })
         return Response(result)
 
@@ -687,11 +727,21 @@ def send_message(request):
         return Response({'error': 'thread_id is required.'}, status=400)
     if not body:
         return Response({'error': 'body is required.'}, status=400)
+    if len(body) > 4000:
+        return Response({'error': 'Message body must be 4000 characters or fewer.'}, status=400)
 
     try:
         thread_id = int(thread_id)
     except (ValueError, TypeError):
         return Response({'error': 'thread_id must be an integer.'}, status=400)
+
+    # Verify thread exists (for both staff and customers)
+    if thread_type == 'editing':
+        if not EditingRequest.objects.filter(pk=thread_id).exists():
+            return Response({'error': 'Thread not found.'}, status=404)
+    else:
+        if not BookingRequest.objects.filter(pk=thread_id).exists():
+            return Response({'error': 'Thread not found.'}, status=404)
 
     if not request.user.is_staff:
         if not _user_owns_thread(request.user, thread_type, thread_id):
@@ -726,6 +776,14 @@ def mark_thread_read(request):
     except (ValueError, TypeError):
         return Response({'error': 'thread_id must be an integer.'}, status=400)
 
+    # Verify thread exists
+    if thread_type == 'editing':
+        if not EditingRequest.objects.filter(pk=thread_id).exists():
+            return Response({'error': 'Thread not found.'}, status=404)
+    else:
+        if not BookingRequest.objects.filter(pk=thread_id).exists():
+            return Response({'error': 'Thread not found.'}, status=404)
+
     if not request.user.is_staff:
         if not _user_owns_thread(request.user, thread_type, thread_id):
             return Response({'error': 'Access denied.'}, status=403)
@@ -735,5 +793,29 @@ def mark_thread_read(request):
         thread_id=thread_id,
         read_by_recipient=False,
     ).exclude(sender=request.user).update(read_by_recipient=True)
+
+    # Push updated badge count via Channels (fire-and-forget, don't fail if Redis is down)
+    try:
+        from asgiref.sync import async_to_sync
+        from channels.layers import get_channel_layer
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            user = request.user
+            if user.is_staff:
+                from .consumers import _get_staff_unread_count
+                count = async_to_sync(_get_staff_unread_count)()
+                async_to_sync(channel_layer.group_send)(
+                    'staff_notifications',
+                    {'type': 'unread_count_update', 'count': count}
+                )
+            else:
+                from .consumers import _get_unread_count
+                count = async_to_sync(_get_unread_count)(user.id, is_staff=False)
+                async_to_sync(channel_layer.group_send)(
+                    f'user_{user.id}',
+                    {'type': 'unread_count_update', 'count': count}
+                )
+    except Exception:
+        pass  # Channel layer unavailable (e.g., Redis down) — badge will update on next WS frame
 
     return Response({'status': 'ok'})

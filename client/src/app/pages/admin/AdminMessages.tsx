@@ -40,7 +40,7 @@ export function AdminMessages() {
     : null;
 
   return (
-    <AdminLayout activeTab={"messages" as any}>
+    <AdminLayout activeTab="messages">
       <div style={{
         display: 'flex',
         height: 'calc(100vh - 64px - 80px)',
