@@ -6,6 +6,8 @@ from .models import (
     EditingRequest, EditingFile, Payment, Message, ServiceArea
 )
 import datetime
+from channels.testing import WebsocketCommunicator
+from channels.db import database_sync_to_async
 
 class ModelSmokeTests(TestCase):
     def setUp(self):
@@ -684,3 +686,204 @@ class MessageAPITests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self._token(self.staff)}')
         resp = self.client.get(f'/api/messages/?thread_type=editing&thread_id={self.editing.id}')
         self.assertEqual(resp.status_code, 200)
+
+
+def _make_ws_app():
+    """Return the WebSocket URLRouter wrapped with InMemoryChannelLayer, bypassing AllowedHostsOriginValidator."""
+    from channels.routing import URLRouter
+    from channels.layers import InMemoryChannelLayer
+    from django.urls import re_path
+    from django.test.utils import override_settings
+    from content.consumers import ChatConsumer, NotificationConsumer
+
+    websocket_urlpatterns = [
+        re_path(r'^ws/chat/(?P<thread_type>booking|editing)/(?P<thread_id>\d+)/$', ChatConsumer.as_asgi()),
+        re_path(r'^ws/notifications/$', NotificationConsumer.as_asgi()),
+    ]
+    app = URLRouter(websocket_urlpatterns)
+    # Attach in-memory channel layer
+    channel_layer = InMemoryChannelLayer()
+    app.channel_layer = channel_layer
+    return app, channel_layer
+
+
+class WebSocketTests(TestCase):
+    def setUp(self):
+        self.customer = User.objects.create_user(
+            username='ws_cust@example.com', email='ws_cust@example.com', password='pass'
+        )
+        self.staff = User.objects.create_user(
+            username='ws_staff@example.com', email='ws_staff@example.com', password='pass',
+            is_staff=True
+        )
+        self.editing = EditingRequest.objects.create(
+            customer=self.customer,
+            style_notes='test',
+            turnaround='1 week',
+        )
+
+    def _token(self, user):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        return str(RefreshToken.for_user(user).access_token)
+
+    def _make_app(self):
+        from channels.routing import URLRouter
+        from channels.layers import InMemoryChannelLayer
+        from django.urls import re_path
+        from content.consumers import ChatConsumer, NotificationConsumer
+
+        websocket_urlpatterns = [
+            re_path(r'^ws/chat/(?P<thread_type>booking|editing)/(?P<thread_id>\d+)/$', ChatConsumer.as_asgi()),
+            re_path(r'^ws/notifications/$', NotificationConsumer.as_asgi()),
+        ]
+        channel_layer = InMemoryChannelLayer()
+
+        from django.test.utils import override_settings
+        import channels
+        app = URLRouter(websocket_urlpatterns)
+        return app, channel_layer
+
+    def test_chat_connect_valid_jwt(self):
+        from asgiref.sync import async_to_sync
+        async_to_sync(self._async_test_chat_connect_valid_jwt)()
+
+    async def _async_test_chat_connect_valid_jwt(self):
+        from channels.routing import URLRouter
+        from channels.layers import InMemoryChannelLayer
+        from django.urls import re_path
+        from content.consumers import ChatConsumer, NotificationConsumer
+        from django.test.utils import override_settings
+
+        websocket_urlpatterns = [
+            re_path(r'^ws/chat/(?P<thread_type>booking|editing)/(?P<thread_id>\d+)/$', ChatConsumer.as_asgi()),
+            re_path(r'^ws/notifications/$', NotificationConsumer.as_asgi()),
+        ]
+        app = URLRouter(websocket_urlpatterns)
+
+        token = self._token(self.customer)
+        communicator = WebsocketCommunicator(
+            app,
+            f'/ws/chat/editing/{self.editing.id}/?token={token}'
+        )
+        communicator.scope['channel_layer'] = InMemoryChannelLayer()
+        with override_settings(CHANNEL_LAYERS={'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}):
+            connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        await communicator.disconnect()
+
+    def test_chat_connect_invalid_jwt_rejected(self):
+        from asgiref.sync import async_to_sync
+        async_to_sync(self._async_test_chat_connect_invalid_jwt_rejected)()
+
+    async def _async_test_chat_connect_invalid_jwt_rejected(self):
+        from channels.routing import URLRouter
+        from channels.layers import InMemoryChannelLayer
+        from django.urls import re_path
+        from content.consumers import ChatConsumer, NotificationConsumer
+        from django.test.utils import override_settings
+
+        websocket_urlpatterns = [
+            re_path(r'^ws/chat/(?P<thread_type>booking|editing)/(?P<thread_id>\d+)/$', ChatConsumer.as_asgi()),
+            re_path(r'^ws/notifications/$', NotificationConsumer.as_asgi()),
+        ]
+        app = URLRouter(websocket_urlpatterns)
+
+        communicator = WebsocketCommunicator(
+            app,
+            f'/ws/chat/editing/{self.editing.id}/?token=invalid_token'
+        )
+        with override_settings(CHANNEL_LAYERS={'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}):
+            connected, code = await communicator.connect()
+        self.assertFalse(connected)
+        self.assertEqual(code, 4003)
+
+    def test_chat_unauthorized_thread_rejected(self):
+        from asgiref.sync import async_to_sync
+        async_to_sync(self._async_test_chat_unauthorized_thread_rejected)()
+
+    async def _async_test_chat_unauthorized_thread_rejected(self):
+        """Customer cannot connect to another customer's thread."""
+        from channels.routing import URLRouter
+        from channels.layers import InMemoryChannelLayer
+        from django.urls import re_path
+        from content.consumers import ChatConsumer, NotificationConsumer
+        from django.test.utils import override_settings
+
+        websocket_urlpatterns = [
+            re_path(r'^ws/chat/(?P<thread_type>booking|editing)/(?P<thread_id>\d+)/$', ChatConsumer.as_asgi()),
+            re_path(r'^ws/notifications/$', NotificationConsumer.as_asgi()),
+        ]
+        app = URLRouter(websocket_urlpatterns)
+
+        other_customer = await database_sync_to_async(User.objects.create_user)(
+            username='other_ws@example.com', email='other_ws@example.com', password='pass'
+        )
+        other_editing = await database_sync_to_async(EditingRequest.objects.create)(
+            customer=other_customer, style_notes='private', turnaround='1w'
+        )
+        token = self._token(self.customer)
+        communicator = WebsocketCommunicator(
+            app,
+            f'/ws/chat/editing/{other_editing.id}/?token={token}'
+        )
+        with override_settings(CHANNEL_LAYERS={'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}):
+            connected, code = await communicator.connect()
+        self.assertFalse(connected)
+        self.assertEqual(code, 4003)
+
+    def test_notification_connect_valid_jwt(self):
+        from asgiref.sync import async_to_sync
+        async_to_sync(self._async_test_notification_connect_valid_jwt)()
+
+    async def _async_test_notification_connect_valid_jwt(self):
+        from channels.routing import URLRouter
+        from channels.layers import InMemoryChannelLayer
+        from django.urls import re_path
+        from content.consumers import ChatConsumer, NotificationConsumer
+        from django.test.utils import override_settings
+
+        websocket_urlpatterns = [
+            re_path(r'^ws/chat/(?P<thread_type>booking|editing)/(?P<thread_id>\d+)/$', ChatConsumer.as_asgi()),
+            re_path(r'^ws/notifications/$', NotificationConsumer.as_asgi()),
+        ]
+        app = URLRouter(websocket_urlpatterns)
+
+        token = self._token(self.customer)
+        communicator = WebsocketCommunicator(
+            app,
+            f'/ws/notifications/?token={token}'
+        )
+        with override_settings(CHANNEL_LAYERS={'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}):
+            connected, _ = await communicator.connect()
+            self.assertTrue(connected)
+            # Should immediately receive current unread count
+            response = await communicator.receive_json_from()
+        self.assertEqual(response['type'], 'unread_count')
+        self.assertIn('count', response)
+        await communicator.disconnect()
+
+    def test_notification_connect_invalid_jwt_rejected(self):
+        from asgiref.sync import async_to_sync
+        async_to_sync(self._async_test_notification_connect_invalid_jwt_rejected)()
+
+    async def _async_test_notification_connect_invalid_jwt_rejected(self):
+        from channels.routing import URLRouter
+        from channels.layers import InMemoryChannelLayer
+        from django.urls import re_path
+        from content.consumers import ChatConsumer, NotificationConsumer
+        from django.test.utils import override_settings
+
+        websocket_urlpatterns = [
+            re_path(r'^ws/chat/(?P<thread_type>booking|editing)/(?P<thread_id>\d+)/$', ChatConsumer.as_asgi()),
+            re_path(r'^ws/notifications/$', NotificationConsumer.as_asgi()),
+        ]
+        app = URLRouter(websocket_urlpatterns)
+
+        communicator = WebsocketCommunicator(
+            app,
+            '/ws/notifications/?token=bad'
+        )
+        with override_settings(CHANNEL_LAYERS={'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}}):
+            connected, code = await communicator.connect()
+        self.assertFalse(connected)
+        self.assertEqual(code, 4003)
