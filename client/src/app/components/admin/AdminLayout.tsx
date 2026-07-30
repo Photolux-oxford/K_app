@@ -2,10 +2,11 @@ import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useNotificationContext } from '../../context/NotificationContext';
 
-type AdminTab = 'dashboard' | 'bookings' | 'availability' | 'messages' | 'editing' | 'service-area';
+type AdminTab = 'dashboard' | 'portfolio' | 'bookings' | 'availability' | 'messages' | 'editing' | 'service-area';
 
 const TABS: { label: string; tab: AdminTab; path: string }[] = [
   { label: 'Dashboard',    tab: 'dashboard',    path: '/admin' },
+  { label: 'Portfolio',    tab: 'portfolio',    path: '/admin/portfolio' },
   { label: 'Bookings',     tab: 'bookings',     path: '/admin/bookings' },
   { label: 'Availability', tab: 'availability', path: '/admin/availability' },
   { label: 'Messages',    tab: 'messages',     path: '/admin/messages' },
@@ -62,7 +63,7 @@ export function AdminLayout({ activeTab, children }: AdminLayoutProps) {
           </div>
 
           {/* Right: tab nav */}
-          <nav style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
+          <nav style={{ display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {TABS.map(({ label, tab, path }) => {
               const isActive = activeTab === tab;
               return (

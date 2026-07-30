@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.contrib.auth.models import User
 from rest_framework.test import APIClient as DRFClient
 from .models import (
-    PortfolioItem, AvailabilitySlot, BookingRequest,
+    Category, PortfolioItem, AvailabilitySlot, BookingRequest,
     EditingRequest, EditingFile, Payment, Message, ServiceArea
 )
 import datetime
@@ -18,11 +18,12 @@ class ModelSmokeTests(TestCase):
         )
 
     def test_portfolio_item_creation(self):
+        cat, _ = Category.objects.get_or_create(name='Smoke Wedding', defaults={'slug': 'smoke-wedding'})
         item = PortfolioItem.objects.create(
-            title='Wedding Shot', category='wedding', image='portfolio/test.jpg'
+            title='Wedding Shot', category=cat, image='portfolio/test.jpg', published=True
         )
         self.assertEqual(str(item), 'Wedding Shot')
-        self.assertFalse(item.featured)
+        self.assertTrue(item.published)
         self.assertEqual(item.order, 0)
 
     def test_availability_slot_creation(self):
@@ -369,6 +370,7 @@ class CreateBookingAPITests(TestCase):
             'session_type': 'portrait',
             'location': 'Oxford',
             'postcode': 'OX1 1AA',
+            'phone': '07000000000',
         }, format='json')
         self.assertEqual(res.status_code, 401)
 
@@ -377,8 +379,9 @@ class CreateBookingAPITests(TestCase):
         res = self.client.post('/api/bookings/', {
             'slot_id': self.slot.id,
             'session_type': 'portrait',
-            'location': 'Christchurch Meadow',
+            'address_line_1': 'Christchurch Meadow',
             'postcode': 'OX1 1AA',
+            'phone': '07000000001',
             'notes': 'morning light preferred',
         }, format='json')
         self.assertEqual(res.status_code, 201)
@@ -386,6 +389,9 @@ class CreateBookingAPITests(TestCase):
         self.assertEqual(res.data['status'], 'pending')
         self.slot.refresh_from_db()
         self.assertTrue(self.slot.is_booked)
+        self.assertTrue(
+            Message.objects.filter(thread_type='booking', thread_id=res.data['id']).exists()
+        )
 
     def test_rejects_already_booked_slot(self):
         self.client.force_authenticate(user=self.customer)
@@ -396,6 +402,7 @@ class CreateBookingAPITests(TestCase):
             'session_type': 'portrait',
             'location': 'Oxford',
             'postcode': 'OX1 1AA',
+            'phone': '07000000002',
         }, format='json')
         self.assertEqual(res.status_code, 409)
 
@@ -406,6 +413,7 @@ class CreateBookingAPITests(TestCase):
             'session_type': 'circus',
             'location': 'Oxford',
             'postcode': 'OX1 1AA',
+            'phone': '07000000003',
         }, format='json')
         self.assertEqual(res.status_code, 400)
 
@@ -423,6 +431,7 @@ class CreateBookingAPITests(TestCase):
             'session_type': 'portrait',
             'location': 'Oxford',
             'postcode': 'OX1 1AA',
+            'phone': '07000000004',
         }, format='json')
         self.assertEqual(res.status_code, 404)
 
@@ -887,3 +896,329 @@ class WebSocketTests(TestCase):
             connected, code = await communicator.connect()
         self.assertFalse(connected)
         self.assertEqual(code, 4003)
+
+
+class PortfolioAPITests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.staff = User.objects.create_user(
+            username='staff@example.com', email='staff@example.com', password='pass', is_staff=True
+        )
+        self.cat, _ = Category.objects.get_or_create(
+            name='Portfolio Test Cat', defaults={'slug': 'portfolio-test-cat'}
+        )
+
+    def test_public_portfolio_only_published(self):
+        PortfolioItem.objects.create(
+            title='Pub', category=self.cat, image='portfolio/a.jpg', published=True
+        )
+        PortfolioItem.objects.create(
+            title='Hidden', category=self.cat, image='portfolio/b.jpg', published=False
+        )
+        res = self.client.get('/api/portfolio/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data), 1)
+
+    def test_admin_category_crud(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.post('/api/admin/portfolio/categories/', {'name': 'Fine Art Portraits'}, format='json')
+        self.assertEqual(res.status_code, 201)
+        cat_id = res.data['id']
+        res = self.client.patch(f'/api/admin/portfolio/categories/{cat_id}/', {'name': 'Portraits'}, format='json')
+        self.assertEqual(res.status_code, 200)
+        res = self.client.delete(f'/api/admin/portfolio/categories/{cat_id}/')
+        self.assertEqual(res.status_code, 200)
+
+
+class DashboardAPITests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.user = User.objects.create_user(
+            username='cust@example.com', email='cust@example.com', password='pass'
+        )
+
+    def test_dashboard_requires_auth(self):
+        res = self.client.get('/api/dashboard/')
+        self.assertEqual(res.status_code, 401)
+
+    def test_dashboard_returns_user_bookings(self):
+        BookingRequest.objects.create(
+            customer=self.user, session_type='portrait', location='Studio', postcode='OX1 1AA'
+        )
+        self.client.force_authenticate(user=self.user)
+        res = self.client.get('/api/dashboard/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data['bookings']), 1)
+
+
+class BookingSlotReleaseTests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.staff = User.objects.create_user(
+            username='staff2@example.com', email='staff2@example.com', password='pass', is_staff=True
+        )
+        self.customer = User.objects.create_user(
+            username='cust2@example.com', email='cust2@example.com', password='pass'
+        )
+        self.slot = AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 8, 1), block='morning', status='available', is_booked=True
+        )
+        self.booking = BookingRequest.objects.create(
+            customer=self.customer, session_type='portrait',
+            location='Home', postcode='OX1 1AA', slot=self.slot, status='pending',
+        )
+
+    def test_cancel_frees_slot(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.patch(
+            f'/api/admin/bookings/{self.booking.id}/status/',
+            {'status': 'cancelled'}, format='json'
+        )
+        self.assertEqual(res.status_code, 200)
+        self.slot.refresh_from_db()
+        self.assertFalse(self.slot.is_booked)
+
+
+class PaymentWebhookTests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.user = User.objects.create_user(
+            username='pay@example.com', email='pay@example.com', password='pass'
+        )
+        self.booking = BookingRequest.objects.create(
+            customer=self.user, session_type='portrait', location='Studio', postcode='OX1 1AA',
+            status='confirmed',
+        )
+        self.payment = Payment.objects.create(
+            booking=self.booking, amount='150.00', status='pending',
+            stripe_checkout_session_id='dev_session_1',
+        )
+
+    def test_dev_mark_paid(self):
+        from django.test.utils import override_settings
+        with override_settings(STRIPE_SECRET_KEY=''):
+            res = self.client.post(
+                '/api/payments/dev-mark-paid/',
+                {'payment_id': self.payment.id}, format='json'
+            )
+        self.assertEqual(res.status_code, 200)
+        self.payment.refresh_from_db()
+        self.booking.refresh_from_db()
+        self.assertEqual(self.payment.status, 'paid')
+        self.assertEqual(self.booking.status, 'confirmed')
+
+
+class EditingPaymentTests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.staff = User.objects.create_user(
+            username='edit_staff@example.com', email='edit_staff@example.com',
+            password='pass', is_staff=True,
+        )
+        self.customer = User.objects.create_user(
+            username='edit_cust@example.com', email='edit_cust@example.com', password='pass',
+        )
+        self.editing = EditingRequest.objects.create(
+            customer=self.customer,
+            style_notes='Warm tones',
+            turnaround='5 days',
+            status='requested',
+        )
+
+    def test_send_payment_creates_checkout(self):
+        from django.test.utils import override_settings
+        self.client.force_authenticate(user=self.staff)
+        with override_settings(STRIPE_SECRET_KEY=''):
+            res = self.client.post(
+                f'/api/admin/editing-requests/{self.editing.id}/send-payment/',
+                {'quoted_price': 85.00},
+                format='json',
+            )
+        self.assertEqual(res.status_code, 200)
+        self.editing.refresh_from_db()
+        self.assertEqual(self.editing.status, 'confirmed')
+        self.assertEqual(float(self.editing.quoted_price), 85.00)
+        payment = Payment.objects.get(editing_request=self.editing)
+        self.assertEqual(payment.status, 'pending')
+        self.assertEqual(float(payment.amount), 85.00)
+        self.assertIn('dev-', payment.payment_link_url)
+        self.assertTrue(
+            Message.objects.filter(
+                thread_type='editing',
+                thread_id=self.editing.id,
+                body__contains='Payment request sent',
+            ).exists()
+        )
+
+    def test_confirm_status_does_not_create_payment(self):
+        from django.test.utils import override_settings
+        self.client.force_authenticate(user=self.staff)
+        self.editing.quoted_price = 85.00
+        self.editing.save()
+        with override_settings(STRIPE_SECRET_KEY=''):
+            res = self.client.patch(
+                f'/api/admin/editing-requests/{self.editing.id}/status/',
+                {'status': 'confirmed'},
+                format='json',
+            )
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(Payment.objects.filter(editing_request=self.editing).exists())
+
+    def test_send_payment_requires_price(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.post(
+            f'/api/admin/editing-requests/{self.editing.id}/send-payment/',
+            {},
+            format='json',
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_send_payment_rejected_when_already_paid(self):
+        Payment.objects.create(
+            editing_request=self.editing,
+            amount='85.00',
+            status='paid',
+            stripe_payment_intent_id='pi_paid_1',
+        )
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.post(
+            f'/api/admin/editing-requests/{self.editing.id}/send-payment/',
+            {'quoted_price': 90.00},
+            format='json',
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_resend_payment_updates_amount(self):
+        from django.test.utils import override_settings
+        self.client.force_authenticate(user=self.staff)
+        with override_settings(STRIPE_SECRET_KEY=''):
+            res1 = self.client.post(
+                f'/api/admin/editing-requests/{self.editing.id}/send-payment/',
+                {'quoted_price': 85.00},
+                format='json',
+            )
+            self.assertEqual(res1.status_code, 200)
+            res2 = self.client.post(
+                f'/api/admin/editing-requests/{self.editing.id}/send-payment/',
+                {'quoted_price': 95.00},
+                format='json',
+            )
+        self.assertEqual(res2.status_code, 200)
+        self.assertEqual(Payment.objects.filter(editing_request=self.editing).count(), 1)
+        payment = Payment.objects.get(editing_request=self.editing)
+        self.assertEqual(float(payment.amount), 95.00)
+        self.editing.refresh_from_db()
+        self.assertEqual(float(self.editing.quoted_price), 95.00)
+
+    def test_admin_editing_list_includes_payment(self):
+        from django.test.utils import override_settings
+        self.client.force_authenticate(user=self.staff)
+        with override_settings(STRIPE_SECRET_KEY=''):
+            self.client.post(
+                f'/api/admin/editing-requests/{self.editing.id}/send-payment/',
+                {'quoted_price': 85.00},
+                format='json',
+            )
+        res = self.client.get('/api/admin/editing-requests/')
+        self.assertEqual(res.status_code, 200)
+        row = next(item for item in res.data if item['id'] == self.editing.id)
+        self.assertIsNotNone(row['payment'])
+        self.assertEqual(row['payment']['status'], 'pending')
+        self.assertEqual(float(row['payment']['amount']), 85.00)
+
+
+class AddressLookupAPITests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+
+    def test_addresses_requires_postcode(self):
+        res = self.client.get('/api/service-area/addresses/')
+        self.assertEqual(res.status_code, 400)
+
+    def test_addresses_empty_without_api_key(self):
+        from django.test.utils import override_settings
+        from unittest.mock import patch
+        with override_settings(GETADDRESS_API_KEY=''):
+            with patch(
+                'content.views._geocode_postcode',
+                return_value=(51.75, -1.27, {
+                    'postcode': 'OX2 0AN',
+                    'admin_ward': 'Osney & St Thomas',
+                    'admin_district': 'Oxford',
+                    'parish': '',
+                }),
+            ):
+                res = self.client.get('/api/service-area/addresses/?postcode=OX2+0AN')
+        self.assertEqual(res.status_code, 200)
+        self.assertGreaterEqual(len(res.data['addresses']), 1)
+        self.assertEqual(res.data['source'], 'postcodes.io')
+
+    def test_addresses_getaddress_401_falls_back(self):
+        from django.test.utils import override_settings
+        from unittest.mock import patch, MagicMock
+        mock_resp = MagicMock()
+        mock_resp.status_code = 401
+        mock_resp.text = 'Unauthorized'
+        with override_settings(GETADDRESS_API_KEY='fake-key', FRONTEND_URL='http://localhost:5173'):
+            with patch(
+                'content.views._geocode_postcode',
+                return_value=(51.75, -1.27, {
+                    'postcode': 'OX2 0AN',
+                    'admin_ward': 'Osney & St Thomas',
+                    'admin_district': 'Oxford',
+                    'parish': '',
+                }),
+            ):
+                with patch('content.views.requests.get', return_value=mock_resp):
+                    res = self.client.get('/api/service-area/addresses/?postcode=OX2+0AN')
+        self.assertEqual(res.status_code, 200)
+        self.assertGreaterEqual(len(res.data['addresses']), 1)
+        self.assertIn('warning', res.data)
+
+    def test_check_empty_polygon_returns_false_when_geocode_ok(self):
+        from unittest.mock import patch
+        ServiceArea.get()
+        with patch('content.views._geocode_postcode', return_value=(51.75, -1.27, {})):
+            res = self.client.post(
+                '/api/service-area/check/',
+                {'postcode': 'OX2 0AN'},
+                format='json',
+            )
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.data['is_within_zone'])
+
+
+class AccessInstructionsBookingTests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+        self.customer = User.objects.create_user(
+            username='access@test.com', email='access@test.com', password='pass',
+        )
+        self.slot = AvailabilitySlot.objects.create(
+            date=datetime.date(2026, 9, 1),
+            block='afternoon',
+            status='available',
+        )
+
+    def test_create_booking_saves_access_instructions(self):
+        from unittest.mock import patch
+        self.client.force_authenticate(user=self.customer)
+        with patch('content.views._geocode_postcode', return_value=(51.75, -1.27, {})):
+            res = self.client.post('/api/bookings/', {
+                'slot_id': self.slot.id,
+                'session_type': 'portrait',
+                'address_line_1': '12 High Street',
+                'address_line_2': 'Osney',
+                'postcode': 'OX2 0AN',
+                'phone': '07475338565',
+                'notes': 'Warm tones',
+                'access_instructions': 'Ring the gate buzzer twice',
+            }, format='json')
+        self.assertEqual(res.status_code, 201)
+        booking = BookingRequest.objects.get(pk=res.data['id'])
+        self.assertEqual(booking.access_instructions, 'Ring the gate buzzer twice')
+        self.assertEqual(booking.notes, 'Warm tones')
+        self.assertEqual(booking.phone, '07475338565')
+        self.assertEqual(booking.address_line_1, '12 High Street')
+        self.assertEqual(booking.address_line_2, 'Osney')
+        self.assertFalse(booking.is_home_visit)

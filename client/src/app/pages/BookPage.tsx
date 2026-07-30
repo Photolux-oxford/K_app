@@ -24,9 +24,12 @@ interface SelectedSlot {
 
 interface SessionDetails {
   session_type: string;
-  location: string;
+  address_line_1: string;
+  address_line_2: string;
   postcode: string;
+  phone: string;
   notes: string;
+  access_instructions: string;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -54,7 +57,13 @@ export function BookPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedSlot, setSelectedSlot] = useState<SelectedSlot | null>(null);
   const [details, setDetails] = useState<SessionDetails>({
-    session_type: '', location: '', postcode: '', notes: '',
+    session_type: '',
+    address_line_1: '',
+    address_line_2: '',
+    postcode: '',
+    phone: '',
+    notes: '',
+    access_instructions: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
@@ -65,12 +74,15 @@ export function BookPage() {
     try {
       await api.post('/bookings/', {
         slot_id:      selectedSlot.slot.id,
-        session_type: details.session_type.toLowerCase(), // backend SESSION_TYPES uses lowercase keys
-        location:     details.location,
+        session_type: details.session_type.toLowerCase(),
+        address_line_1: details.address_line_1,
+        address_line_2: details.address_line_2,
         postcode:     details.postcode,
+        phone:        details.phone,
         notes:        details.notes,
+        access_instructions: details.access_instructions,
       });
-      toast.success('Booking request submitted! Kay will confirm within 48 hours.');
+      toast.success('Quote request submitted! Kay will review within 48 hours.');
       navigate('/dashboard');
     } catch (err) {
       if ((err as ApiError).status === 409) {
@@ -95,7 +107,7 @@ export function BookPage() {
         {/* Header */}
         <div style={{ marginBottom: 40 }}>
           <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#aaa', margin: '0 0 8px' }}>
-            Book a Session
+            Request a Quote
           </p>
           <h1 style={{ fontSize: 28, fontWeight: 300, color: '#111', margin: 0, letterSpacing: '-0.01em' }}>
             {step === 1 ? 'Choose a date & time' : step === 2 ? 'Session details' : 'Confirm your request'}
@@ -340,7 +352,7 @@ function StepOne({ onSelect }: StepOneProps) {
                   </div>
                   {isPotential && (
                     <p style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderTop: 'none', padding: '8px 14px', margin: 0, borderRadius: '0 0 4px 4px' }}>
-                      This is a potential slot — Kay will reach out to confirm availability before this booking is finalised.
+                      This is a potential slot — Kay will confirm availability, then send a quote for payment.
                     </p>
                   )}
                 </div>
@@ -364,33 +376,46 @@ interface StepTwoProps {
 }
 
 function StepTwo({ selectedSlot, details, onChange, onBack, onNext }: StepTwoProps) {
-  const [postcodeStatus, setPostcodeStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
-  const [postcodeMsg, setPostcodeMsg]       = useState('');
+  const [postcodeStatus, setPostcodeStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>('idle');
+  const [postcodeMsg, setPostcodeMsg] = useState('');
+  const [withinZone, setWithinZone] = useState(false);
+
+  const isCompleteUkPostcode = (value: string) =>
+    /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i.test(value.trim());
 
   const checkPostcode = async (postcode: string) => {
     const trimmed = postcode.trim();
     if (!trimmed) return;
+    if (!isCompleteUkPostcode(trimmed)) {
+      setPostcodeStatus('error');
+      setPostcodeMsg('Enter a full UK postcode (e.g. OX2 0AN), then click Check.');
+      return;
+    }
     setPostcodeStatus('checking');
     try {
       const res = await api.post<{ is_within_zone: boolean }>('/service-area/check/', { postcode: trimmed });
+      setWithinZone(res.is_within_zone);
+      setPostcodeStatus('ok');
       if (res.is_within_zone) {
-        setPostcodeStatus('valid');
-        setPostcodeMsg('Within service area');
+        setPostcodeMsg('Within service area — home visit available');
       } else {
-        setPostcodeStatus('invalid');
-        setPostcodeMsg('Outside service area — Kay does not cover this location');
+        setPostcodeMsg("Outside home-visit zone — session at Kay's studio");
       }
-    } catch {
-      setPostcodeStatus('invalid');
-      setPostcodeMsg('Could not verify postcode — please check and try again');
+    } catch (err) {
+      setPostcodeStatus('error');
+      setWithinZone(false);
+      const data = (err as ApiError).data as { error?: string } | undefined;
+      setPostcodeMsg(data?.error ?? 'Could not verify postcode — please check and try again');
     }
   };
 
+  const phoneOk = /^[\d\s+().-]{7,30}$/.test(details.phone.trim());
   const canProceed =
-    details.session_type &&
-    details.location.trim() &&
-    details.postcode.trim() &&
-    postcodeStatus === 'valid';
+    !!details.session_type &&
+    details.address_line_1.trim().length > 0 &&
+    details.postcode.trim().length > 0 &&
+    phoneOk &&
+    postcodeStatus === 'ok';
 
   const inputStyle = {
     width: '100%', padding: '10px 12px',
@@ -405,15 +430,20 @@ function StepTwo({ selectedSlot, details, onChange, onBack, onNext }: StepTwoPro
     display: 'block' as const, marginBottom: 6,
   };
 
+  const borderColor =
+    postcodeStatus === 'ok'
+      ? (withinZone ? '#22c55e' : '#d97706')
+      : postcodeStatus === 'error'
+        ? '#ef4444'
+        : 'rgba(0,0,0,0.12)';
+
   return (
     <div style={{ background: '#fff', border: '1px solid rgba(0,0,0,0.06)', padding: '28px 28px 24px' }}>
-      {/* Slot summary */}
       <div style={{ background: '#f9f9f9', border: '1px solid #eee', padding: '10px 14px', marginBottom: 24, fontSize: 12, color: '#555' }}>
-        📅 {selectedSlot.dateLabel} · {selectedSlot.blockLabel}
+        {selectedSlot.dateLabel} · {selectedSlot.blockLabel}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {/* Session type */}
         <div>
           <label style={labelStyle}>Session Type</label>
           <select
@@ -426,42 +456,116 @@ function StepTwo({ selectedSlot, details, onChange, onBack, onNext }: StepTwoPro
           </select>
         </div>
 
-        {/* Location */}
         <div>
-          <label style={labelStyle}>Location</label>
+          <label style={labelStyle}>Phone number</label>
+          <input
+            type="tel"
+            value={details.phone}
+            onChange={e => onChange({ ...details, phone: e.target.value })}
+            placeholder="07…"
+            maxLength={30}
+            style={inputStyle}
+          />
+          <p style={{ fontSize: 11, color: '#aaa', margin: '5px 0 0' }}>
+            So Kay can contact you if needed about the session.
+          </p>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Postcode</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="text"
+              value={details.postcode}
+              onChange={e => {
+                onChange({ ...details, postcode: e.target.value });
+                setPostcodeStatus('idle');
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  checkPostcode(details.postcode);
+                }
+              }}
+              placeholder="OX1 1NE"
+              maxLength={10}
+              style={{ ...inputStyle, borderColor, flex: 1 }}
+            />
+            <button
+              type="button"
+              onClick={() => checkPostcode(details.postcode)}
+              disabled={postcodeStatus === 'checking' || !details.postcode.trim()}
+              style={{
+                padding: '10px 14px',
+                background: postcodeStatus === 'checking' ? '#ccc' : '#111',
+                color: '#fff',
+                border: 'none',
+                cursor: postcodeStatus === 'checking' ? 'not-allowed' : 'pointer',
+                fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                fontSize: 10,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {postcodeStatus === 'checking' ? 'Checking…' : 'Check'}
+            </button>
+          </div>
+          {postcodeStatus === 'ok' && withinZone && (
+            <p style={{ fontSize: 11, color: '#22c55e', margin: '5px 0 0' }}>✓ {postcodeMsg}</p>
+          )}
+          {postcodeStatus === 'ok' && !withinZone && (
+            <p style={{ fontSize: 11, color: '#d97706', margin: '5px 0 0' }}>{postcodeMsg}</p>
+          )}
+          {postcodeStatus === 'error' && (
+            <p style={{ fontSize: 11, color: '#ef4444', margin: '5px 0 0' }}>✗ {postcodeMsg}</p>
+          )}
+          {postcodeStatus === 'idle' && (
+            <p style={{ fontSize: 11, color: '#aaa', margin: '5px 0 0' }}>
+              Enter the full postcode, then click Check.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label style={labelStyle}>Address line 1</label>
           <input
             type="text"
-            value={details.location}
-            onChange={e => onChange({ ...details, location: e.target.value })}
-            placeholder="e.g. Christchurch Meadow, Oxford"
-            maxLength={300}
+            value={details.address_line_1}
+            onChange={e => onChange({ ...details, address_line_1: e.target.value })}
+            placeholder="House number and street"
+            maxLength={200}
             style={inputStyle}
           />
         </div>
 
-        {/* Postcode */}
         <div>
-          <label style={labelStyle}>Postcode</label>
+          <label style={labelStyle}>Address line 2 (optional)</label>
           <input
             type="text"
-            value={details.postcode}
-            onChange={e => { onChange({ ...details, postcode: e.target.value }); setPostcodeStatus('idle'); }}
-            onBlur={e => checkPostcode(e.target.value)}
-            placeholder="OX1 1NE"
-            maxLength={10}
-            style={{
-              ...inputStyle,
-              borderColor: postcodeStatus === 'valid' ? '#22c55e' : postcodeStatus === 'invalid' ? '#ef4444' : 'rgba(0,0,0,0.12)',
-            }}
+            value={details.address_line_2}
+            onChange={e => onChange({ ...details, address_line_2: e.target.value })}
+            placeholder="Flat, building, area…"
+            maxLength={200}
+            style={inputStyle}
           />
-          {postcodeStatus === 'checking' && <p style={{ fontSize: 11, color: '#888', margin: '5px 0 0' }}>Checking…</p>}
-          {postcodeStatus === 'valid'    && <p style={{ fontSize: 11, color: '#22c55e', margin: '5px 0 0' }}>✓ {postcodeMsg}</p>}
-          {postcodeStatus === 'invalid'  && <p style={{ fontSize: 11, color: '#ef4444', margin: '5px 0 0' }}>✗ {postcodeMsg}</p>}
         </div>
 
-        {/* Notes */}
         <div>
-          <label style={labelStyle}>Notes (optional)</label>
+          <label style={labelStyle}>Access instructions (optional)</label>
+          <textarea
+            value={details.access_instructions}
+            onChange={e => onChange({ ...details, access_instructions: e.target.value })}
+            placeholder="Gates, buzzer, parking, flat number…"
+            maxLength={1000}
+            rows={2}
+            style={{ ...inputStyle, resize: 'vertical' }}
+          />
+        </div>
+
+        <div>
+          <label style={labelStyle}>Session notes (optional)</label>
           <textarea
             value={details.notes}
             onChange={e => onChange({ ...details, notes: e.target.value })}
@@ -510,8 +614,10 @@ function StepThree({ selectedSlot, details, submitting, onBack, onSubmit }: Step
     { label: 'Date',     value: selectedSlot.dateLabel },
     { label: 'Time',     value: selectedSlot.blockLabel },
     { label: 'Session',  value: details.session_type },
-    { label: 'Location', value: details.location },
+    { label: 'Phone',    value: details.phone },
+    { label: 'Address',  value: [details.address_line_1, details.address_line_2].filter(Boolean).join(', ') },
     { label: 'Postcode', value: details.postcode },
+    ...(details.access_instructions ? [{ label: 'Access', value: details.access_instructions }] : []),
     ...(details.notes ? [{ label: 'Notes', value: details.notes }] : []),
   ];
 
@@ -536,11 +642,11 @@ function StepThree({ selectedSlot, details, submitting, onBack, onSubmit }: Step
 
       {isPotential ? (
         <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '10px 14px', marginBottom: 20, fontSize: 11, color: '#92400e', borderRadius: 3 }}>
-          ⚠ This is a potential slot — Kay will reach out to confirm availability before this booking is finalised.
+          ⚠ This is a potential slot — Kay will confirm availability, then send a quote for payment.
         </div>
       ) : (
         <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '10px 14px', marginBottom: 20, fontSize: 11, color: '#166534', borderRadius: 3 }}>
-          Kay will review your request and confirm within 48 hours.
+          Kay will review your quote request within 48 hours, confirm availability, then send a price to pay from your Bookings page.
         </div>
       )}
 
@@ -560,7 +666,7 @@ function StepThree({ selectedSlot, details, submitting, onBack, onSubmit }: Step
           fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase',
           transition: 'background 0.2s',
         }}>
-          {submitting ? 'Submitting…' : 'Submit Request'}
+          {submitting ? 'Submitting…' : 'Submit Quote Request'}
         </button>
       </div>
     </div>

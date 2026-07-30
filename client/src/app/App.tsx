@@ -10,9 +10,13 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminBookings } from './pages/admin/AdminBookings';
 import { AdminEditing } from './pages/admin/AdminEditing';
 import { AdminAvailability } from './pages/admin/AdminAvailability';
+import { AdminPortfolio } from './pages/admin/AdminPortfolio';
 import { AdminMessages } from './pages/admin/AdminMessages';
 import { MessagesPage } from './pages/MessagesPage';
-import { BookPage }    from './pages/BookPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { Toaster } from './components/ui/sonner';
+import { BookPage } from './pages/BookPage';
+import { BookingIntroPage } from './pages/BookingIntroPage';
 import { EditingPage } from './pages/EditingPage';
 import { Cursor } from './components/Cursor';
 import { Header } from './components/Header';
@@ -43,17 +47,19 @@ export default function App() {
       <NotificationProvider>
         <BrowserRouter>
           <Cursor />
+          <Toaster />
           <Routes>
             {/* Public */}
             <Route path="/"            element={<HomePage />} />
             <Route path="/login"       element={<LoginPage />} />
             <Route path="/register"    element={<RegisterPage />} />
             <Route path="/service-area" element={<ServiceAreaPage />} />
+            <Route path="/book" element={<BookingIntroPage />} />
 
             {/* Customer (login required) */}
-            <Route path="/book"      element={<ProtectedRoute><BookPage /></ProtectedRoute>} />
+            <Route path="/book/request" element={<ProtectedRoute><BookPage /></ProtectedRoute>} />
             <Route path="/editing"   element={<ProtectedRoute><EditingPage /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><div style={{ padding: 40 }}>Dashboard coming soon</div></ProtectedRoute>} />
+            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
             <Route path="/messages"  element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />
 
             {/* Admin routes (Kay only) */}
@@ -75,6 +81,11 @@ export default function App() {
             <Route path="/admin/editing" element={
               <ProtectedRoute requireStaff>
                 <AdminEditing />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/portfolio" element={
+              <ProtectedRoute requireStaff>
+                <AdminPortfolio />
               </ProtectedRoute>
             } />
             <Route path="/admin/messages" element={

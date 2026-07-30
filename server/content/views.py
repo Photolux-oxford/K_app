@@ -1,18 +1,27 @@
 import os
-import urllib.request
-import urllib.error
+import urllib.parse
 import json
 import datetime as dt
+import logging
 
+import requests
 from rest_framework.decorators import api_view, permission_classes
 from django.db import transaction
 from django.db.models import Max
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
-from .models import AvailabilitySlot, BookingRequest, EditingFile, EditingRequest, Message, PortfolioItem, ServiceArea
+from .models import AvailabilitySlot, BookingRequest, EditingFile, EditingRequest, Message, PortfolioItem, ServiceArea, Payment
+
+logger = logging.getLogger(__name__)
 
 UPLOAD_MAX_SIZE = 25 * 1024 * 1024  # 25 MB
+
+
+def _customer_display_name(user):
+    """Full name when available, otherwise email."""
+    full = f'{user.first_name} {user.last_name}'.strip()
+    return full or user.email
 UPLOAD_ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.cr2', '.nef', '.arw'}
 
 
@@ -38,17 +47,57 @@ def _point_in_polygon(lat, lng, polygon):
 def _geocode_postcode(postcode):
     """
     Geocode a UK postcode using the free postcodes.io API.
-    Returns (lat, lng) or raises ValueError if the postcode is invalid.
-    Raises urllib.error.URLError if the service is unreachable.
+    Returns (lat, lng, result_dict) or raises ValueError if the postcode is invalid.
+    Raises requests.RequestException if the service is unreachable.
     """
     clean = postcode.replace(' ', '').upper()
     url = f"https://api.postcodes.io/postcodes/{clean}"
-    with urllib.request.urlopen(url, timeout=5) as resp:
-        data = json.loads(resp.read())
+    resp = requests.get(url, timeout=8)
+    if resp.status_code == 404:
+        raise ValueError(f"Invalid or unknown postcode: {postcode}")
+    resp.raise_for_status()
+    data = resp.json()
     if data.get('status') != 200 or not data.get('result'):
         raise ValueError(f"Invalid or unknown postcode: {postcode}")
     result = data['result']
-    return result['latitude'], result['longitude']
+    return result['latitude'], result['longitude'], result
+
+
+def _place_suggestions_from_postcode_result(result, postcode):
+    """Build soft place-level suggestions when street-level lookup is unavailable."""
+    suggestions = []
+    postcode_fmt = result.get('postcode') or postcode
+    ward = (result.get('admin_ward') or '').strip()
+    district = (result.get('admin_district') or '').strip()
+    parish = (result.get('parish') or '').strip()
+    if parish.lower().endswith(', unparished area'):
+        parish = ''
+
+    if ward and district:
+        suggestions.append({
+            'line_1': ward,
+            'line_2': '',
+            'town': district,
+            'formatted': f'{ward}, {district}, {postcode_fmt}',
+            'id': '',
+        })
+    if district and not any(s['town'] == district and not s['line_1'] for s in suggestions):
+        suggestions.append({
+            'line_1': district,
+            'line_2': '',
+            'town': district,
+            'formatted': f'{district}, {postcode_fmt}',
+            'id': '',
+        })
+    if parish and parish != district:
+        suggestions.append({
+            'line_1': parish,
+            'line_2': '',
+            'town': district or parish,
+            'formatted': f'{parish}, {postcode_fmt}',
+            'id': '',
+        })
+    return suggestions
 
 
 @api_view(['GET', 'PATCH'])
@@ -80,20 +129,120 @@ def service_area_check(request):
         return Response({'error': 'postcode is required.'}, status=400)
 
     try:
-        lat, lng = _geocode_postcode(postcode)
+        lat, lng, _result = _geocode_postcode(postcode)
     except ValueError as e:
         return Response({'error': str(e)}, status=400)
     except Exception:
+        logger.exception('Postcode geocode failed for %s', postcode)
         return Response({'error': 'Postcode lookup service unavailable. Please try again.'}, status=503)
 
     area = ServiceArea.get()
-    is_within = _point_in_polygon(lat, lng, area.polygon)
+    polygon = area.polygon if isinstance(area.polygon, list) else []
+    is_within = _point_in_polygon(lat, lng, polygon) if polygon else False
 
     return Response({
         'postcode': postcode,
         'lat': lat,
         'lng': lng,
         'is_within_zone': is_within,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def service_area_addresses(request):
+    """
+    Look up addresses for a UK postcode.
+    Prefers getAddress.io Autocomplete; falls back to place-level hints from postcodes.io
+    when getAddress is unavailable (common for some new accounts that reject Autocomplete).
+    """
+    from django.conf import settings
+
+    postcode = request.query_params.get('postcode', '').strip()
+    if not postcode:
+        return Response({'error': 'postcode query param is required.'}, status=400)
+
+    # Always geocode first — validates postcode and provides fallback suggestions.
+    try:
+        _lat, _lng, geo = _geocode_postcode(postcode)
+    except ValueError as e:
+        return Response({'error': str(e)}, status=400)
+    except Exception:
+        logger.exception('Postcode geocode failed during address lookup for %s', postcode)
+        return Response({'error': 'Postcode lookup service unavailable. Please try again.'}, status=503)
+
+    fallback = _place_suggestions_from_postcode_result(geo, postcode)
+    api_key = (getattr(settings, 'GETADDRESS_API_KEY', '') or '').strip()
+    if not api_key:
+        return Response({
+            'postcode': geo.get('postcode') or postcode,
+            'addresses': fallback,
+            'source': 'postcodes.io',
+        })
+
+    # Autocomplete with all=true returns every address for a postcode (1 lookup).
+    # Domain tokens (dtoken_…) also work here; send Origin so domain-restricted tokens match.
+    url = f'https://api.getAddress.io/autocomplete/{urllib.parse.quote(postcode)}'
+    frontend = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    try:
+        resp = requests.get(
+            url,
+            params={'api-key': api_key, 'all': 'true', 'top': '100'},
+            headers={'Origin': frontend, 'Referer': frontend + '/'},
+            timeout=10,
+        )
+        if resp.status_code == 401:
+            logger.error(
+                'getAddress.io Autocomplete returned 401 for this key '
+                '(Usage/Get may still work). Falling back to place hints. '
+                'Try rotating the API key or creating a Domain Token for localhost.'
+            )
+            return Response({
+                'postcode': geo.get('postcode') or postcode,
+                'addresses': fallback,
+                'source': 'postcodes.io',
+                'warning': (
+                    'Street-level lookup is not enabled for this getAddress key. '
+                    'Type your full address below, or create a Domain Token in getAddress '
+                    'for localhost and put that token in GETADDRESS_API_KEY.'
+                ),
+            })
+        if resp.status_code != 200:
+            logger.warning('getAddress.io returned %s for %s: %s', resp.status_code, postcode, resp.text[:200])
+            return Response({
+                'postcode': geo.get('postcode') or postcode,
+                'addresses': fallback,
+                'source': 'postcodes.io',
+            })
+        data = resp.json()
+    except Exception:
+        logger.exception('getAddress.io lookup failed for %s', postcode)
+        return Response({
+            'postcode': geo.get('postcode') or postcode,
+            'addresses': fallback,
+            'source': 'postcodes.io',
+        })
+
+    addresses = []
+    for item in data.get('suggestions') or []:
+        formatted = (item.get('address') or '').strip()
+        if not formatted:
+            continue
+        addresses.append({
+            'line_1': formatted.split(',')[0].strip() if formatted else '',
+            'line_2': '',
+            'town': '',
+            'formatted': formatted,
+            'id': item.get('id') or '',
+        })
+
+    if not addresses:
+        addresses = fallback
+
+    return Response({
+        'postcode': geo.get('postcode') or postcode,
+        'addresses': addresses,
+        'source': 'getaddress.io' if addresses and addresses != fallback else 'postcodes.io',
     })
 
 
@@ -112,6 +261,7 @@ def admin_stats(request):
         recent_bookings.append({
             'id': b.id,
             'customer_email': b.customer.email,
+            'customer_name': _customer_display_name(b.customer),
             'session_type': b.session_type,
             'status': b.status,
             'created_at': b.created_at.isoformat(),
@@ -122,6 +272,7 @@ def admin_stats(request):
         recent_editing.append({
             'id': e.id,
             'customer_email': e.customer.email,
+            'customer_name': _customer_display_name(e.customer),
             'turnaround': e.turnaround,
             'status': e.status,
             'created_at': e.created_at.isoformat(),
@@ -146,15 +297,24 @@ def admin_bookings_list(request):
 
     items = []
     for b in qs:
+        payment = Payment.objects.filter(booking=b).first()
         items.append({
             'id': b.id,
             'customer_email': b.customer.email,
+            'customer_name': _customer_display_name(b.customer),
             'session_type': b.session_type,
             'location': b.location,
+            'address_line_1': b.address_line_1 or b.location,
+            'address_line_2': b.address_line_2,
             'postcode': b.postcode,
+            'phone': b.phone,
             'date': b.slot.date.isoformat() if b.slot else None,
             'status': b.status,
             'notes': b.notes,
+            'access_instructions': b.access_instructions,
+            'is_home_visit': b.is_home_visit,
+            'quoted_price': str(b.quoted_price) if b.quoted_price is not None else None,
+            'payment': _payment_summary(payment),
             'created_at': b.created_at.isoformat(),
         })
     return Response(items)
@@ -173,9 +333,73 @@ def admin_booking_status(request, pk):
     if new_status not in valid:
         return Response({'error': f'Invalid status. Must be one of: {valid}'}, status=400)
 
+    old_status = booking.status
     booking.status = new_status
     booking.save()
+
+    if new_status in ('cancelled', 'declined') and booking.slot_id:
+        slot = booking.slot
+        slot.is_booked = False
+        slot.save()
+
     return Response({'id': booking.id, 'status': booking.status})
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def admin_booking_send_payment(request, pk):
+    try:
+        booking = BookingRequest.objects.get(pk=pk)
+    except BookingRequest.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=404)
+
+    if booking.status in ('declined', 'cancelled', 'completed'):
+        return Response({'error': 'Cannot send payment for this booking status.'}, status=400)
+
+    existing_payment = Payment.objects.filter(booking=booking).first()
+    if existing_payment and existing_payment.status == 'paid':
+        return Response({'error': 'Payment already completed.'}, status=400)
+
+    price = request.data.get('quoted_price')
+    if price is None or price == '':
+        return Response({'error': 'quoted_price is required.'}, status=400)
+    try:
+        price_value = float(price)
+        if price_value <= 0:
+            raise ValueError('non-positive')
+    except (ValueError, TypeError):
+        return Response({'error': 'quoted_price must be a positive number.'}, status=400)
+
+    booking.quoted_price = price_value
+    booking.status = 'confirmed'
+    booking.save()
+
+    from payments.services import create_checkout_for_booking
+    from content.emails import send_booking_confirmation_email
+
+    payment = create_checkout_for_booking(booking)
+    if not payment:
+        return Response({'error': 'Could not create payment.'}, status=500)
+
+    if payment.payment_link_url:
+        send_booking_confirmation_email(booking, payment.payment_link_url)
+
+    Message.objects.create(
+        thread_type='booking',
+        thread_id=booking.id,
+        sender=request.user,
+        body=(
+            f'Your quote is ready: £{booking.quoted_price:.2f}. '
+            f'Please head to your Bookings page and click the Pay button to complete payment.'
+        ),
+    )
+
+    return Response({
+        'id': booking.id,
+        'quoted_price': str(booking.quoted_price),
+        'status': booking.status,
+        'payment': _payment_summary(payment),
+    })
 
 
 @api_view(['POST'])
@@ -209,15 +433,18 @@ def admin_editing_list(request):
 
     items = []
     for e in qs:
+        payment = Payment.objects.filter(editing_request=e).first()
         items.append({
             'id': e.id,
             'customer_email': e.customer.email,
+            'customer_name': _customer_display_name(e.customer),
             'style_notes': e.style_notes,
             'turnaround': e.turnaround,
             'status': e.status,
             'quoted_price': str(e.quoted_price) if e.quoted_price is not None else None,
             'file_count': e.files.count(),
             'created_at': e.created_at.isoformat(),
+            'payment': _payment_summary(payment),
         })
     return Response(items)
 
@@ -248,10 +475,65 @@ def admin_editing_status(request, pk):
             editing.quoted_price = None
 
     editing.save()
+
     return Response({
         'id': editing.id,
         'status': editing.status,
         'quoted_price': str(editing.quoted_price) if editing.quoted_price is not None else None,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def admin_editing_send_payment(request, pk):
+    try:
+        editing = EditingRequest.objects.get(pk=pk)
+    except EditingRequest.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=404)
+
+    if editing.status in ('declined', 'delivered'):
+        return Response({'error': 'Cannot send payment for this job status.'}, status=400)
+
+    existing_payment = Payment.objects.filter(editing_request=editing).first()
+    if existing_payment and existing_payment.status == 'paid':
+        return Response({'error': 'Payment already completed.'}, status=400)
+
+    price = request.data.get('quoted_price')
+    if price is None or price == '':
+        return Response({'error': 'quoted_price is required.'}, status=400)
+    try:
+        price_value = float(price)
+        if price_value <= 0:
+            raise ValueError('non-positive')
+    except (ValueError, TypeError):
+        return Response({'error': 'quoted_price must be a positive number.'}, status=400)
+
+    editing.quoted_price = price_value
+    editing.status = 'confirmed'
+    editing.save()
+
+    from payments.services import create_checkout_for_editing
+    from content.emails import send_editing_payment_email
+
+    payment = create_checkout_for_editing(editing)
+    if not payment:
+        return Response({'error': 'Could not create payment.'}, status=500)
+
+    if payment.payment_link_url:
+        send_editing_payment_email(editing, payment.payment_link_url)
+
+    Message.objects.create(
+        thread_type='editing',
+        thread_id=editing.id,
+        sender=request.user,
+        body=f'Payment request sent: £{editing.quoted_price}. You can pay from your dashboard.',
+    )
+
+    return Response({
+        'id': editing.id,
+        'quoted_price': str(editing.quoted_price),
+        'status': editing.status,
+        'payment': _payment_summary(payment),
     })
 
 
@@ -387,19 +669,41 @@ def customer_availability(request):
 def create_booking(request):
     slot_id      = request.data.get('slot_id')
     session_type = request.data.get('session_type', '').strip()
-    location     = request.data.get('location', '').strip()
-    postcode     = request.data.get('postcode', '').strip()
-    notes        = request.data.get('notes', '').strip()
+    address_line_1 = request.data.get('address_line_1', '').strip()
+    address_line_2 = request.data.get('address_line_2', '').strip()
+    # Back-compat: older clients may still send `location`
+    location = request.data.get('location', '').strip()
+    if address_line_1:
+        location = ', '.join(p for p in (address_line_1, address_line_2) if p)
+    postcode = request.data.get('postcode', '').strip()
+    phone = request.data.get('phone', '').strip()
+    notes = request.data.get('notes', '').strip()
+    access_instructions = request.data.get('access_instructions', '').strip()
 
     if not slot_id or not session_type or not location or not postcode:
         return Response(
-            {'error': 'slot_id, session_type, location, and postcode are required.'},
+            {'error': 'slot_id, session_type, address_line_1 (or location), and postcode are required.'},
             status=400
         )
+    if not phone:
+        return Response({'error': 'phone is required.'}, status=400)
+    if len(phone) > 30:
+        return Response({'error': 'phone must be 30 characters or fewer.'}, status=400)
+    if len(access_instructions) > 1000:
+        return Response({'error': 'access_instructions must be 1000 characters or fewer.'}, status=400)
 
     valid_types = [s[0] for s in BookingRequest.SESSION_TYPES]
     if session_type not in valid_types:
         return Response({'error': f'session_type must be one of {valid_types}.'}, status=400)
+
+    is_home_visit = False
+    try:
+        lat, lng, _result = _geocode_postcode(postcode)
+        area = ServiceArea.get()
+        polygon = area.polygon if isinstance(area.polygon, list) else []
+        is_home_visit = _point_in_polygon(lat, lng, polygon) if polygon else False
+    except (ValueError, Exception):
+        pass
 
     with transaction.atomic():
         try:
@@ -417,13 +721,29 @@ def create_booking(request):
             customer=request.user,
             session_type=session_type,
             location=location,
+            address_line_1=address_line_1 or location,
+            address_line_2=address_line_2,
             postcode=postcode,
+            phone=phone,
+            is_home_visit=is_home_visit,
             notes=notes,
+            access_instructions=access_instructions,
             slot=slot,
             status='pending',
         )
         slot.is_booked = True
         slot.save()
+
+        # Seed thread so it appears in Messages before the first chat reply
+        Message.objects.create(
+            thread_type='booking',
+            thread_id=booking.id,
+            sender=request.user,
+            body=(
+                f'New booking request: {session_type} · {location} ({postcode}).'
+                + (f' Notes: {notes}' if notes else '')
+            ),
+        )
 
     return Response({'id': booking.id, 'status': booking.status}, status=201)
 
@@ -486,28 +806,6 @@ def upload_editing_file(request, pk):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
-def portfolio_list(request):
-    """
-    Returns all portfolio items ordered by `order` then `-created_at`.
-    Optional query param: ?category=wedding
-    """
-    qs = PortfolioItem.objects.all()
-    category = request.query_params.get('category')
-    if category:
-        qs = qs.filter(category=category)
-    items = []
-    for item in qs:
-        items.append({
-            'id': item.id,
-            'title': item.title,
-            'category': item.category,
-            'image': request.build_absolute_uri(item.image.url) if item.image else None,
-            'featured': item.featured,
-            'order': item.order,
-        })
-    return Response(items)
-
-
 def _thread_subject(thread_type, thread_id):
     """Derive a display subject for a thread without storing it."""
     if thread_type == 'editing':
@@ -608,15 +906,18 @@ def message_threads(request):
             if tt == 'editing':
                 req = editing_map.get(tid)
                 customer_email = req.customer.email if req else 'unknown'
+                customer_name = _customer_display_name(req.customer) if req else 'unknown'
                 subject = req.style_notes[:60] if req else f'Editing #{tid}'
             else:
                 req = booking_map.get(tid)
                 customer_email = req.customer.email if req else 'unknown'
+                customer_name = _customer_display_name(req.customer) if req else 'unknown'
                 subject = f"{req.session_type.capitalize()} · {req.location}" if req else f'Booking #{tid}'
             result.append({
                 'thread_type': tt,
                 'thread_id': tid,
                 'customer_email': customer_email,
+                'customer_name': customer_name,
                 'subject': subject,
                 'last_message_body': row['last_message_body'] or '',
                 'last_message_at': row['last_message_at'].isoformat() if row['last_message_at'] else None,
@@ -819,3 +1120,73 @@ def mark_thread_read(request):
         pass  # Channel layer unavailable (e.g., Redis down) — badge will update on next WS frame
 
     return Response({'status': 'ok'})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    return Response({'status': 'ok'})
+
+
+def _payment_summary(payment):
+    if not payment:
+        return None
+    return {
+        'id': payment.id,
+        'status': payment.status,
+        'amount': str(payment.amount),
+        'currency': payment.currency,
+        'payment_link_url': payment.payment_link_url or None,
+        'paid_at': payment.paid_at.isoformat() if payment.paid_at else None,
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def customer_dashboard(request):
+    bookings = BookingRequest.objects.filter(
+        customer=request.user
+    ).select_related('slot').order_by('-created_at')
+
+    editing = EditingRequest.objects.filter(
+        customer=request.user
+    ).order_by('-created_at')
+
+    booking_data = []
+    for b in bookings:
+        payment = Payment.objects.filter(booking=b).first()
+        booking_data.append({
+            'id': b.id,
+            'session_type': b.session_type,
+            'location': b.location,
+            'address_line_1': b.address_line_1 or b.location,
+            'address_line_2': b.address_line_2,
+            'postcode': b.postcode,
+            'phone': b.phone,
+            'is_home_visit': b.is_home_visit,
+            'date': b.slot.date.isoformat() if b.slot else None,
+            'block': b.slot.block if b.slot else None,
+            'status': b.status,
+            'notes': b.notes,
+            'access_instructions': b.access_instructions,
+            'created_at': b.created_at.isoformat(),
+            'payment': _payment_summary(payment),
+        })
+
+    editing_data = []
+    for e in editing:
+        payment = Payment.objects.filter(editing_request=e).first()
+        editing_data.append({
+            'id': e.id,
+            'style_notes': e.style_notes[:80],
+            'turnaround': e.turnaround,
+            'status': e.status,
+            'quoted_price': str(e.quoted_price) if e.quoted_price is not None else None,
+            'created_at': e.created_at.isoformat(),
+            'payment': _payment_summary(payment),
+        })
+
+    return Response({
+        'bookings': booking_data,
+        'editing_requests': editing_data,
+    })

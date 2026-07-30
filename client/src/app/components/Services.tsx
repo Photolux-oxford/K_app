@@ -11,7 +11,7 @@ const SERVICES = [
     title: 'Photography Sessions',
     description:
       'Weddings, portraits, events, and products — captured with precision and artistry. Available on location throughout Oxford and the surrounding area.',
-    cta: 'Book a session',
+    cta: 'Request a session',
     href: '/book',
     dark: false,
   },

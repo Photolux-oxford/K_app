@@ -2,20 +2,34 @@ import datetime
 
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils.text import slugify
+
+
+class Category(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(max_length=100, unique=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'name']
+        verbose_name_plural = 'categories'
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
 
 
 class PortfolioItem(models.Model):
-    CATEGORY_CHOICES = [
-        ('wedding', 'Wedding'),
-        ('portrait', 'Portrait'),
-        ('event', 'Event'),
-        ('landscape', 'Landscape'),
-        ('product', 'Product'),
-    ]
-    title = models.CharField(max_length=200)
-    category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
+    title = models.CharField(max_length=200, blank=True)
+    category = models.ForeignKey(
+        Category, null=True, blank=True, on_delete=models.SET_NULL, related_name='items'
+    )
     image = models.ImageField(upload_to='portfolio/')
-    featured = models.BooleanField(default=False)
+    published = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -23,7 +37,28 @@ class PortfolioItem(models.Model):
         ordering = ['order', '-created_at']
 
     def __str__(self):
-        return self.title
+        return self.title or f'Portfolio #{self.pk}'
+
+
+class HeroSlot(models.Model):
+    FIT_CHOICES = [
+        ('cover', 'Cover (fill & crop)'),
+        ('contain', 'Contain (show full image)'),
+    ]
+
+    slot_number = models.PositiveSmallIntegerField(unique=True)
+    portfolio_item = models.ForeignKey(
+        PortfolioItem, null=True, blank=True, on_delete=models.SET_NULL, related_name='hero_slots'
+    )
+    position_x = models.SmallIntegerField(default=50, help_text='Horizontal focal point 0-100 (left to right)')
+    position_y = models.SmallIntegerField(default=50, help_text='Vertical focal point 0-100 (top to bottom)')
+    fit_mode = models.CharField(max_length=10, choices=FIT_CHOICES, default='cover')
+
+    class Meta:
+        ordering = ['slot_number']
+
+    def __str__(self):
+        return f'Hero slot {self.slot_number}'
 
 
 class AvailabilitySlot(models.Model):
@@ -87,13 +122,18 @@ class BookingRequest(models.Model):
     customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookings')
     session_type = models.CharField(max_length=50, choices=SESSION_TYPES)
     location = models.CharField(max_length=300)
+    address_line_1 = models.CharField(max_length=200, blank=True, default='')
+    address_line_2 = models.CharField(max_length=200, blank=True, default='')
     postcode = models.CharField(max_length=10)
+    phone = models.CharField(max_length=30, blank=True, default='')
     is_home_visit = models.BooleanField(default=False)
     slot = models.OneToOneField(
         AvailabilitySlot, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='booking'
     )
     notes = models.TextField(blank=True)
+    access_instructions = models.TextField(blank=True)
+    quoted_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -143,7 +183,9 @@ class Payment(models.Model):
         EditingRequest, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='payment'
     )
-    stripe_payment_intent_id = models.CharField(max_length=200, unique=True)
+    stripe_payment_intent_id = models.CharField(max_length=200, unique=True, null=True, blank=True)
+    stripe_checkout_session_id = models.CharField(max_length=500, blank=True, default='')
+    payment_link_url = models.URLField(max_length=500, blank=True, default='')
     amount = models.DecimalField(max_digits=8, decimal_places=2)
     currency = models.CharField(max_length=3, default='GBP')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')

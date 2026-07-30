@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 interface EditingRequest {
   id: number;
   customer_email: string;
+  customer_name?: string;
   style_notes: string;
   turnaround: string;
   status: string;
@@ -91,7 +92,7 @@ function MessageModal({ editing, onClose }: MessageModalProps) {
           Send Message
         </h2>
         <p style={{ fontSize: 12, color: '#888', margin: '0 0 20px' }}>
-          To: {editing.customer_email}
+          To: {editing.customer_name || editing.customer_email}
         </p>
 
         {sent ? (
@@ -265,7 +266,10 @@ export function AdminEditing() {
                     }}
                   >
                     <td style={{ padding: '14px 16px', fontSize: 12, color: '#111' }}>
-                      {r.customer_email}
+                      {r.customer_name || r.customer_email}
+                      {r.customer_name && (
+                        <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{r.customer_email}</div>
+                      )}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: 12, color: '#555', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.style_notes.length > 60 ? r.style_notes.slice(0, 60) + '…' : r.style_notes}
@@ -329,7 +333,7 @@ export function AdminEditing() {
                                 cursor: 'pointer', fontFamily: "'Helvetica Neue', Arial, sans-serif",
                               }}
                             >
-                              Confirm
+                              Accept job
                             </button>
                             <button
                               onClick={() => patchRequest(r.id, { status: 'declined' })}

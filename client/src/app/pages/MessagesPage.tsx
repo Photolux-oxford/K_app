@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ThreadList, type ThreadSummary } from '../components/ThreadList';
 import { ChatPanel } from '../components/ChatPanel';
@@ -8,48 +8,64 @@ import { Header } from '../components/Header';
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
 const FONT = "'Helvetica Neue', Arial, sans-serif";
 
+/** Normalize ?thread=booking_12 | booking-12 | booking:12 → booking_12 */
+function normalizeThreadKey(raw: string | null): string | null {
+  if (!raw) return null;
+  const m = raw.trim().match(/^(booking|editing)[-_:](\d+)$/i);
+  if (!m) return null;
+  return `${m[1].toLowerCase()}_${m[2]}`;
+}
+
+function parseThreadKey(key: string): { threadType: 'booking' | 'editing'; threadId: number } | null {
+  const m = key.match(/^(booking|editing)_(\d+)$/);
+  if (!m) return null;
+  return { threadType: m[1] as 'booking' | 'editing', threadId: parseInt(m[2], 10) };
+}
+
 export function MessagesPage() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [searchParams] = useSearchParams();
+  const initialKey = normalizeThreadKey(searchParams.get('thread'));
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
-  const [selectedKey, setSelectedKey] = useState<string | null>(
-    searchParams.get('thread') ?? null
-  );
+  const [selectedKey, setSelectedKey] = useState<string | null>(initialKey);
   const [loading, setLoading] = useState(true);
 
-  // Fetch thread list
-  const fetchThreads = async () => {
-    if (!token) return;
-    try {
-      const resp = await fetch(`${API_BASE}/messages/threads/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        // Customer response is grouped: { editing: [...], booking: [...] }
-        const editing: ThreadSummary[] = (data.editing ?? []).map((t: ThreadSummary) => ({
-          ...t, thread_type: 'editing' as const,
-        }));
-        const booking: ThreadSummary[] = (data.booking ?? []).map((t: ThreadSummary) => ({
-          ...t, thread_type: 'booking' as const,
-        }));
-        setThreads([...editing, ...booking]);
+  useEffect(() => {
+    if (user?.is_staff || !token) return;
+
+    const fetchThreads = async () => {
+      try {
+        const resp = await fetch(`${API_BASE}/messages/threads/`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const editing: ThreadSummary[] = (data.editing ?? []).map((t: ThreadSummary) => ({
+            ...t, thread_type: 'editing' as const,
+          }));
+          const booking: ThreadSummary[] = (data.booking ?? []).map((t: ThreadSummary) => ({
+            ...t, thread_type: 'booking' as const,
+          }));
+          setThreads([...editing, ...booking]);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
       }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  useEffect(() => { fetchThreads(); }, [token]);
+    fetchThreads();
+  }, [token, user?.is_staff]);
 
-  const selectedThread = selectedKey
-    ? (() => {
-        const [type, idStr] = selectedKey.split('_');
-        return { threadType: type as 'booking' | 'editing', threadId: parseInt(idStr, 10) };
-      })()
-    : null;
+  // Staff should use the admin inbox — customer API shape differs
+  if (user?.is_staff) {
+    const thread = normalizeThreadKey(searchParams.get('thread'));
+    const to = thread ? `/admin/messages?thread=${thread}` : '/admin/messages';
+    return <Navigate to={to} replace />;
+  }
+
+  const selectedThread = selectedKey ? parseThreadKey(selectedKey) : null;
 
   return (
     <div style={{ minHeight: '100vh', background: '#fff', fontFamily: FONT }}>
@@ -60,7 +76,6 @@ export function MessagesPage() {
         marginTop: 64,
         overflow: 'hidden',
       }}>
-        {/* Sidebar */}
         <div style={{
           width: 260,
           flexShrink: 0,
@@ -87,16 +102,12 @@ export function MessagesPage() {
                 grouped
                 threads={threads}
                 selectedKey={selectedKey}
-                onSelect={key => {
-                  setSelectedKey(key);
-                  fetchThreads(); // refresh unread counts
-                }}
+                onSelect={key => setSelectedKey(key)}
               />
             )}
           </div>
         </div>
 
-        {/* Chat panel */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {selectedThread ? (
             <ChatPanel

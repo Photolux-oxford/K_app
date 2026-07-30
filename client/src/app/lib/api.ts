@@ -8,13 +8,31 @@ function getHeaders(): HeadersInit {
   };
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function refreshAccessToken(): Promise<string | null> {
+  const refresh = localStorage.getItem('refresh_token');
+  if (!refresh) return null;
+  const res = await fetch(`${BASE_URL}/auth/token/refresh/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json() as { access: string };
+  localStorage.setItem('access_token', data.access);
+  return data.access;
+}
+
+async function request<T>(method: string, path: string, body?: unknown, retried = false): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: getHeaders(),
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !retried) {
+    const newToken = await refreshAccessToken();
+    if (newToken) return request<T>(method, path, body, true);
+  }
   if (!res.ok) {
     const err: { status: number; data: unknown } = { status: res.status, data };
     throw err;
@@ -39,6 +57,7 @@ export interface ApiError { status: number; data: unknown; }
 export const api = {
   get:    <T>(path: string)                  => request<T>('GET',    path),
   post:   <T>(path: string, body: unknown)   => request<T>('POST',   path, body),
+  put:    <T>(path: string, body: unknown)   => request<T>('PUT',    path, body),
   patch:  <T>(path: string, body: unknown)   => request<T>('PATCH',  path, body),
   delete: <T>(path: string)                  => request<T>('DELETE', path),
 };

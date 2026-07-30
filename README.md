@@ -9,5 +9,7 @@
 
   **Backend** (`server/`): create a virtualenv, `pip install -r requirements.txt`, copy `server/.env.example` to `server/.env`, then `python manage.py migrate` and `python manage.py runserver`.
 
-  **Local Postgres**: from the repo root, `docker compose up -d`, then set `DATABASE_URL` in `server/.env` as in `.env.example`. See [server/docs/LOCAL_DATABASE.md](server/docs/LOCAL_DATABASE.md).
+  **Local Postgres + Redis**: from the repo root, `docker compose up -d`, then set `DATABASE_URL` and `REDIS_URL` in `server/.env` as in `.env.example`. See [server/docs/LOCAL_DATABASE.md](server/docs/LOCAL_DATABASE.md).
+
+  **Frontend env**: copy `client/.env.example` to `client/.env` if you need to override API URLs.
   

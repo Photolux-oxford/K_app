@@ -1,8 +1,18 @@
 import { useState, FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import type { AuthUser } from '../context/AuthContext';
+
+/** Only allow same-origin relative paths (no protocol-relative //…). */
+function resolveNextPath(raw: string | null, isStaff: boolean): string {
+  if (!raw) return isStaff ? '/admin' : '/dashboard';
+  const decoded = decodeURIComponent(raw);
+  if (!decoded.startsWith('/') || decoded.startsWith('//')) {
+    return isStaff ? '/admin' : '/dashboard';
+  }
+  return decoded;
+}
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -11,6 +21,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -25,7 +36,7 @@ export function LoginPage() {
       localStorage.setItem('access_token', tokens.access);
       const user = await api.get<AuthUser>('/auth/me/');
       login(tokens.access, tokens.refresh, user);
-      navigate(user.is_staff ? '/admin' : '/dashboard');
+      navigate(resolveNextPath(searchParams.get('next'), user.is_staff));
     } catch {
       localStorage.removeItem('access_token');
       setError('Invalid email or password.');
@@ -53,9 +64,9 @@ export function LoginPage() {
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Email</label>
+            <label style={labelStyle}>Email or username</label>
             <input
-              type="email" value={email} required autoComplete="email"
+              type="text" value={email} required autoComplete="username"
               onChange={e => setEmail(e.target.value)} style={inputStyle}
             />
           </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { ThreadList, type ThreadSummary } from '../../components/ThreadList';
 import { ChatPanel } from '../../components/ChatPanel';
@@ -7,10 +8,26 @@ import { useAuth } from '../../context/AuthContext';
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
 const FONT = "'Helvetica Neue', Arial, sans-serif";
 
+function normalizeThreadKey(raw: string | null): string | null {
+  if (!raw) return null;
+  const m = raw.trim().match(/^(booking|editing)[-_:](\d+)$/i);
+  if (!m) return null;
+  return `${m[1].toLowerCase()}_${m[2]}`;
+}
+
+function parseThreadKey(key: string): { threadType: 'booking' | 'editing'; threadId: number } | null {
+  const m = key.match(/^(booking|editing)_(\d+)$/);
+  if (!m) return null;
+  return { threadType: m[1] as 'booking' | 'editing', threadId: parseInt(m[2], 10) };
+}
+
 export function AdminMessages() {
   const { token } = useAuth();
+  const [searchParams] = useSearchParams();
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(
+    normalizeThreadKey(searchParams.get('thread'))
+  );
   const [loading, setLoading] = useState(true);
 
   const fetchThreads = async () => {
@@ -32,12 +49,7 @@ export function AdminMessages() {
 
   useEffect(() => { fetchThreads(); }, [token]);
 
-  const selectedThread = selectedKey
-    ? (() => {
-        const [type, idStr] = selectedKey.split('_');
-        return { threadType: type as 'booking' | 'editing', threadId: parseInt(idStr, 10) };
-      })()
-    : null;
+  const selectedThread = selectedKey ? parseThreadKey(selectedKey) : null;
 
   return (
     <AdminLayout activeTab="messages">
@@ -48,7 +60,6 @@ export function AdminMessages() {
         margin: '-40px -32px',
         fontFamily: FONT,
       }}>
-        {/* Sidebar */}
         <div style={{
           width: 260,
           flexShrink: 0,
@@ -84,7 +95,6 @@ export function AdminMessages() {
           </div>
         </div>
 
-        {/* Chat panel */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {selectedThread ? (
             <ChatPanel

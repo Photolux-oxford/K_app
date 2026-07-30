@@ -8,6 +8,7 @@ export interface ThreadSummary {
   last_message_at: string | null;
   unread_count: number;
   customer_email?: string; // admin only
+  customer_name?: string;  // admin only
 }
 
 interface ThreadListProps {
@@ -64,7 +65,7 @@ function ThreadRow({
             letterSpacing: '0.07em', marginBottom: 2,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
-            {thread.thread_type === 'editing' ? 'Editing' : 'Booking'} #{thread.thread_id} · {thread.customer_email}
+            {thread.thread_type === 'editing' ? 'Editing' : 'Booking'} #{thread.thread_id} · {thread.customer_name || thread.customer_email}
           </div>
         ) : (
           <div style={{

@@ -5,11 +5,17 @@ import { api } from '../../lib/api';
 interface Booking {
   id: number;
   customer_email: string;
+  customer_name?: string;
   session_type: string;
   location: string;
+  address_line_1?: string;
+  address_line_2?: string;
+  phone?: string;
   date: string | null;
   status: string;
   notes: string;
+  access_instructions?: string;
+  is_home_visit?: boolean;
   created_at: string;
 }
 
@@ -86,7 +92,7 @@ function MessageModal({ booking, onClose }: MessageModalProps) {
           Send Message
         </h2>
         <p style={{ fontSize: 12, color: '#888', margin: '0 0 20px' }}>
-          To: {booking.customer_email}
+          To: {booking.customer_name || booking.customer_email}
         </p>
 
         {sent ? (
@@ -245,13 +251,34 @@ export function AdminBookings() {
                   }}
                 >
                   <td style={{ padding: '14px 16px', fontSize: 12, color: '#111' }}>
-                    {b.customer_email}
+                    {b.customer_name || b.customer_email}
+                    {b.customer_name && (
+                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{b.customer_email}</div>
+                    )}
                   </td>
                   <td style={{ padding: '14px 16px', fontSize: 12, color: '#555', textTransform: 'capitalize' }}>
                     {b.session_type}
                   </td>
-                  <td style={{ padding: '14px 16px', fontSize: 12, color: '#555', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {b.location.length > 40 ? b.location.slice(0, 40) + '…' : b.location}
+                  <td style={{ padding: '14px 16px', fontSize: 12, color: '#555', maxWidth: 180 }}>
+                    <div title={b.location}>
+                      {(b.address_line_1 || b.location).length > 40
+                        ? (b.address_line_1 || b.location).slice(0, 40) + '…'
+                        : (b.address_line_1 || b.location)}
+                    </div>
+                    {b.address_line_2 && (
+                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{b.address_line_2}</div>
+                    )}
+                    {b.phone && (
+                      <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>{b.phone}</div>
+                    )}
+                    {b.is_home_visit === false && (
+                      <div style={{ fontSize: 10, color: '#d97706', marginTop: 2 }}>Studio visit</div>
+                    )}
+                    {b.access_instructions && (
+                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }} title={b.access_instructions}>
+                        Access: {b.access_instructions.length > 40 ? b.access_instructions.slice(0, 40) + '…' : b.access_instructions}
+                      </div>
+                    )}
                   </td>
                   <td style={{ padding: '14px 16px', fontSize: 12, color: '#555' }}>
                     {b.date

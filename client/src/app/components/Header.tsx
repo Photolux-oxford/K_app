@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotificationContext } from '../context/NotificationContext';
 import gsap from 'gsap';
@@ -11,12 +11,77 @@ const NAV_LINKS = [
   { label: 'Contact',   id: 'contact'   },
 ];
 
+/** Customer app pages that don't have homepage section anchors. */
+const APP_PATHS = ['/messages', '/dashboard', '/book', '/editing'];
+
+const FONT = "'Helvetica Neue', Arial, sans-serif";
+
+const desktopNavLinkStyle = (active = false): CSSProperties => ({
+  fontFamily: FONT,
+  fontSize: 12,
+  fontWeight: active ? 600 : 400,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: '#111',
+  textDecoration: 'none',
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  cursor: 'pointer',
+  transition: 'color 0.2s',
+});
+
+const desktopMutedNavStyle = (active = false): CSSProperties => ({
+  ...desktopNavLinkStyle(active),
+  fontWeight: active ? 500 : 400,
+  color: active ? '#111' : '#444',
+});
+
+function NavHoverLink({
+  to,
+  children,
+  active,
+  muted = false,
+  className,
+  onClick,
+}: {
+  to: string;
+  children: ReactNode;
+  active?: boolean;
+  muted?: boolean;
+  className?: string;
+  onClick?: () => void;
+}) {
+  const base = muted ? desktopMutedNavStyle(!!active) : desktopNavLinkStyle(!!active);
+  return (
+    <Link
+      to={to}
+      className={className}
+      onClick={onClick}
+      style={base}
+      onMouseEnter={e => { if (muted && !active) e.currentTarget.style.color = '#111'; }}
+      onMouseLeave={e => { if (muted && !active) e.currentTarget.style.color = '#444'; }}
+    >
+      {children}
+    </Link>
+  );
+}
+
 export function Header() {
   const { user, logout } = useAuth();
   const { unreadCount } = useNotificationContext();
   const navigate = useNavigate();
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
+
+  const isAppPage = APP_PATHS.some(
+    p => location.pathname === p || location.pathname.startsWith(`${p}/`)
+  );
+  /** Logged-in account shell (Home / Bookings / Messages) on app pages. */
+  const showAppNav = !!user && isAppPage;
+  /** On marketing pages, show Bookings + Messages for any logged-in user. */
+  const showAccountLinks = !!user && !showAppNav;
 
   const scrollTo = (id: string) =>
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -27,6 +92,12 @@ export function Header() {
 
   const handleNavClick = (id: string) => {
     closeMenu();
+    if (location.pathname !== '/') {
+      navigate('/');
+      // Wait for home mount before scrolling
+      setTimeout(() => scrollTo(id), 350);
+      return;
+    }
     setTimeout(() => scrollTo(id), 280);
   };
 
@@ -48,6 +119,18 @@ export function Header() {
     }
   }, [menuOpen]);
 
+  const messagesBadge = unreadCount > 0 ? (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: 16, height: 16,
+      background: '#111', color: '#fff',
+      borderRadius: '50%',
+      fontSize: 9, fontWeight: 700,
+    }}>
+      {unreadCount}
+    </span>
+  ) : null;
+
   return (
     <>
       <header style={{
@@ -66,7 +149,6 @@ export function Header() {
 
           {/* Left cluster: mobile hamburger + desktop logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            {/* Hamburger — mobile only (left side) */}
             <button
               onClick={() => setMenuOpen(true)}
               className="md:hidden"
@@ -82,10 +164,9 @@ export function Header() {
               <span style={{ display: 'block', width: 20, height: 1.5, background: '#111' }} />
             </button>
 
-            {/* Logo (desktop) */}
             <Link to="/" className="hidden md:inline" style={{ textDecoration: 'none' }}>
               <span style={{
-                fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                fontFamily: FONT,
                 fontSize: 13, fontWeight: 500, letterSpacing: '0.12em',
                 textTransform: 'uppercase', color: '#111',
               }}>
@@ -94,10 +175,9 @@ export function Header() {
             </Link>
           </div>
 
-          {/* Logo (mobile centered) */}
           <Link to="/" className="md:hidden" style={{ textDecoration: 'none' }}>
             <span style={{
-              fontFamily: "'Helvetica Neue', Arial, sans-serif",
+              fontFamily: FONT,
               fontSize: 13, fontWeight: 500, letterSpacing: '0.08em',
               textTransform: 'uppercase', color: '#111',
             }}>
@@ -105,89 +185,90 @@ export function Header() {
             </span>
           </Link>
 
-          {/* Scroll nav — desktop only */}
+          {/* Center nav — desktop */}
           <nav style={{ display: 'flex', gap: 32 }} className="hidden md:flex">
-            {NAV_LINKS.map(({ label, id }) => (
-              <button
-                key={id}
-                onClick={() => scrollTo(id)}
-                style={{
-                  background: 'none', border: 'none', padding: 0,
-                  fontFamily: "'Helvetica Neue', Arial, sans-serif",
-                  fontSize: 12, fontWeight: 400, letterSpacing: '0.08em',
-                  textTransform: 'uppercase', color: '#444',
-                  cursor: 'pointer', transition: 'color 0.2s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.color = '#111')}
-                onMouseLeave={e => (e.currentTarget.style.color = '#444')}
-              >
-                {label}
-              </button>
-            ))}
-            <Link
-              to="/service-area"
-              style={{
-                fontFamily: "'Helvetica Neue', Arial, sans-serif",
-                fontSize: 12, fontWeight: 400, letterSpacing: '0.08em',
-                textTransform: 'uppercase', color: '#444',
-                textDecoration: 'none', transition: 'color 0.2s',
-              }}
-            >
-              Area
-            </Link>
+            {showAppNav ? (
+              <>
+                <NavHoverLink to="/" muted>
+                  Home
+                </NavHoverLink>
+                <NavHoverLink to="/dashboard" muted active={location.pathname === '/dashboard'}>
+                  Bookings
+                </NavHoverLink>
+                <NavHoverLink to="/messages" muted active={location.pathname === '/messages'}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                    Messages
+                    {messagesBadge}
+                  </span>
+                </NavHoverLink>
+              </>
+            ) : (
+              <>
+                {NAV_LINKS.map(({ label, id }) => (
+                  <button
+                    key={id}
+                    onClick={() => {
+                      if (location.pathname !== '/') {
+                        navigate('/');
+                        setTimeout(() => scrollTo(id), 350);
+                      } else {
+                        scrollTo(id);
+                      }
+                    }}
+                    style={desktopMutedNavStyle()}
+                    onMouseEnter={e => (e.currentTarget.style.color = '#111')}
+                    onMouseLeave={e => (e.currentTarget.style.color = '#444')}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <Link
+                  to="/service-area"
+                  style={desktopMutedNavStyle(location.pathname === '/service-area')}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#111')}
+                  onMouseLeave={e => {
+                    if (location.pathname !== '/service-area') e.currentTarget.style.color = '#444';
+                  }}
+                >
+                  Area
+                </Link>
+                {showAccountLinks && (
+                  <>
+                    <NavHoverLink to="/dashboard" muted active={location.pathname === '/dashboard'}>
+                      Bookings
+                    </NavHoverLink>
+                    <NavHoverLink to="/messages" muted active={location.pathname === '/messages'}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        Messages
+                        {messagesBadge}
+                      </span>
+                    </NavHoverLink>
+                  </>
+                )}
+                {!user && (
+                  <NavHoverLink to="/login" muted active={location.pathname === '/login'}>
+                    Log In
+                  </NavHoverLink>
+                )}
+              </>
+            )}
           </nav>
 
           {/* Right side */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
 
-            {/* Book + Editing — desktop only */}
-            <Link to="/book" className="hidden md:inline" style={{
-              fontFamily: "'Helvetica Neue', Arial, sans-serif",
-              fontSize: 12, fontWeight: 500, letterSpacing: '0.08em',
-              textTransform: 'uppercase', color: '#111', textDecoration: 'none',
-            }}>
-              Book
+            <Link to="/book" className="hidden md:inline" style={desktopNavLinkStyle()}>
+              Request a Session
             </Link>
-            <Link to="/editing" className="hidden md:inline" style={{
-              fontFamily: "'Helvetica Neue', Arial, sans-serif",
-              fontSize: 12, fontWeight: 500, letterSpacing: '0.08em',
-              textTransform: 'uppercase', color: '#111', textDecoration: 'none',
-            }}>
+            <Link to="/editing" className="hidden md:inline" style={desktopNavLinkStyle()}>
               Editing
             </Link>
-            {user && (
-              <Link
-                to="/messages"
-                className="hidden md:inline"
-                style={{
-                  fontFamily: "'Helvetica Neue', Arial, sans-serif",
-                  fontSize: 12, fontWeight: 500, letterSpacing: '0.08em',
-                  textTransform: 'uppercase', color: '#111', textDecoration: 'none',
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                }}
-              >
-                Messages
-                {unreadCount > 0 && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 16, height: 16,
-                    background: '#111', color: '#fff',
-                    borderRadius: '50%',
-                    fontSize: 9, fontWeight: 700,
-                  }}>
-                    {unreadCount}
-                  </span>
-                )}
-              </Link>
-            )}
 
-            {/* Admin link — desktop only, staff only */}
             {user?.is_staff && (
               <Link to="/admin" className="hidden md:inline" style={{
-                fontFamily: "'Helvetica Neue', Arial, sans-serif",
-                fontSize: 12, fontWeight: 500, letterSpacing: '0.08em',
-                textTransform: 'uppercase', color: '#888', textDecoration: 'none',
-                transition: 'color 0.2s',
+                ...desktopNavLinkStyle(),
+                fontWeight: 500,
+                color: '#888',
               }}
               onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = '#111')}
               onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = '#888')}
@@ -198,7 +279,6 @@ export function Header() {
 
             <div className="hidden md:block" style={{ width: 1, height: 16, background: '#ddd' }} />
 
-            {/* Auth — desktop only (also shown inside overlay on mobile) */}
             {user ? (
               <button
                 onClick={handleLogout}
@@ -207,7 +287,7 @@ export function Header() {
                   padding: '8px 18px',
                   background: '#111', color: '#fff',
                   border: 'none',
-                  fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                  fontFamily: FONT,
                   fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
                   textTransform: 'uppercase', cursor: 'pointer',
                 }}
@@ -219,7 +299,7 @@ export function Header() {
                 <Link to="/login" className="hidden md:inline" style={{
                   padding: '7px 16px',
                   border: '1px solid #111', color: '#111',
-                  fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                  fontFamily: FONT,
                   fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
                   textTransform: 'uppercase', textDecoration: 'none',
                   transition: 'background 0.2s, color 0.2s',
@@ -229,7 +309,7 @@ export function Header() {
                 <Link to="/register" className="hidden md:inline" style={{
                   padding: '8px 18px',
                   background: '#111', color: '#fff',
-                  fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                  fontFamily: FONT,
                   fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
                   textTransform: 'uppercase', textDecoration: 'none',
                 }}>
@@ -238,13 +318,12 @@ export function Header() {
               </>
             )}
 
-            {/* Spacer to keep centered logo visually centered on mobile */}
             <div className="md:hidden" style={{ width: 28 }} />
           </div>
         </div>
       </header>
 
-      {/* Full-screen mobile overlay — sibling of <header>, NOT a child */}
+      {/* Full-screen mobile overlay */}
       <div
         ref={overlayRef}
         style={{
@@ -253,10 +332,9 @@ export function Header() {
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
           opacity: 0, pointerEvents: 'none',
-          fontFamily: "'Helvetica Neue', Arial, sans-serif",
+          fontFamily: FONT,
         }}
       >
-        {/* Close button */}
         <button
           onClick={closeMenu}
           aria-label="Close menu"
@@ -270,52 +348,136 @@ export function Header() {
           ×
         </button>
 
-        {/* Nav links */}
         <nav style={{
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', gap: 24, marginBottom: 48,
         }}>
-          {NAV_LINKS.map(({ label, id }) => (
-            <button
-              key={id}
-              onClick={() => handleNavClick(id)}
-              style={{
-                background: 'none', border: 'none', padding: 0,
-                fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
-                letterSpacing: '-0.01em', color: '#111',
-                cursor: 'pointer',
-                fontFamily: "'Helvetica Neue', Arial, sans-serif",
-              }}
-            >
-              {label}
-            </button>
-          ))}
-          <Link
-            to="/service-area"
-            onClick={closeMenu}
-            style={{
-              fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
-              letterSpacing: '-0.01em', color: '#111',
-              textDecoration: 'none',
-              fontFamily: "'Helvetica Neue', Arial, sans-serif",
-            }}
-          >
-            Area
-          </Link>
+          {showAppNav ? (
+            <>
+              <Link
+                to="/"
+                onClick={closeMenu}
+                style={{
+                  fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
+                  letterSpacing: '-0.01em', color: '#111',
+                  textDecoration: 'none', fontFamily: FONT,
+                }}
+              >
+                Home
+              </Link>
+              <Link
+                to="/dashboard"
+                onClick={closeMenu}
+                style={{
+                  fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
+                  letterSpacing: '-0.01em', color: '#111',
+                  textDecoration: 'none', fontFamily: FONT,
+                }}
+              >
+                Bookings
+              </Link>
+              <Link
+                to="/messages"
+                onClick={closeMenu}
+                style={{
+                  fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
+                  letterSpacing: '-0.01em', color: '#111',
+                  textDecoration: 'none', fontFamily: FONT,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}
+              >
+                Messages
+                {messagesBadge}
+              </Link>
+            </>
+          ) : (
+            <>
+              {NAV_LINKS.map(({ label, id }) => (
+                <button
+                  key={id}
+                  onClick={() => handleNavClick(id)}
+                  style={{
+                    background: 'none', border: 'none', padding: 0,
+                    fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
+                    letterSpacing: '-0.01em', color: '#111',
+                    cursor: 'pointer',
+                    fontFamily: FONT,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+              <Link
+                to="/service-area"
+                onClick={closeMenu}
+                style={{
+                  fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
+                  letterSpacing: '-0.01em', color: '#111',
+                  textDecoration: 'none',
+                  fontFamily: FONT,
+                }}
+              >
+                Area
+              </Link>
+              {showAccountLinks && (
+                <>
+                  <Link
+                    to="/dashboard"
+                    onClick={closeMenu}
+                    style={{
+                      fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
+                      letterSpacing: '-0.01em', color: '#111',
+                      textDecoration: 'none', fontFamily: FONT,
+                    }}
+                  >
+                    Bookings
+                  </Link>
+                  <Link
+                    to="/messages"
+                    onClick={closeMenu}
+                    style={{
+                      fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
+                      letterSpacing: '-0.01em', color: '#111',
+                      textDecoration: 'none', fontFamily: FONT,
+                      display: 'flex', alignItems: 'center', gap: 10,
+                    }}
+                  >
+                    Messages
+                    {messagesBadge}
+                  </Link>
+                </>
+              )}
+            </>
+          )}
         </nav>
 
-        {/* CTA buttons */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+          {!user && (
+            <Link
+              to="/login"
+              onClick={closeMenu}
+              style={{
+                padding: '14px 40px', background: '#111', color: '#fff',
+                fontSize: 11, fontWeight: 600, letterSpacing: '0.15em',
+                textTransform: 'uppercase', textDecoration: 'none',
+              }}
+            >
+              Log In
+            </Link>
+          )}
           <Link
             to="/book"
             onClick={closeMenu}
             style={{
-              padding: '14px 40px', background: '#111', color: '#fff',
+              padding: '14px 40px',
+              background: user ? '#111' : 'transparent',
+              color: user ? '#fff' : '#111',
+              border: user ? 'none' : '1px solid #111',
               fontSize: 11, fontWeight: 600, letterSpacing: '0.15em',
               textTransform: 'uppercase', textDecoration: 'none',
             }}
           >
-            Book a Session
+            Request a Session
           </Link>
           <Link
             to="/editing"
@@ -329,39 +491,13 @@ export function Header() {
           >
             Submit for Editing
           </Link>
-          {user && (
-            <Link
-              to="/messages"
-              onClick={closeMenu}
-              style={{
-                padding: '13px 40px',
-                border: '1px solid #111', color: '#111',
-                fontSize: 11, fontWeight: 600, letterSpacing: '0.15em',
-                textTransform: 'uppercase', textDecoration: 'none',
-                display: 'flex', alignItems: 'center', gap: 8,
-              }}
-            >
-              Messages
-              {unreadCount > 0 && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 16, height: 16,
-                  background: '#111', color: '#fff',
-                  borderRadius: '50%',
-                  fontSize: 9, fontWeight: 700,
-                }}>
-                  {unreadCount}
-                </span>
-              )}
-            </Link>
-          )}
           {user?.is_staff && (
             <Link
               to="/admin"
               onClick={closeMenu}
               style={{
                 padding: '10px 0',
-                fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                fontFamily: FONT,
                 fontSize: 11, fontWeight: 500, letterSpacing: '0.12em',
                 textTransform: 'uppercase', color: '#aaa', textDecoration: 'none',
               }}
@@ -371,7 +507,6 @@ export function Header() {
           )}
         </div>
 
-        {/* Auth links — mobile overlay only */}
         <div style={{
           position: 'absolute', bottom: 40,
           display: 'flex', gap: 16, alignItems: 'center',
@@ -381,7 +516,7 @@ export function Header() {
               onClick={() => { closeMenu(); handleLogout(); }}
               style={{
                 background: 'none', border: 'none', padding: 0,
-                fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                fontFamily: FONT,
                 fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
                 textTransform: 'uppercase', color: '#888', cursor: 'pointer',
               }}
@@ -391,7 +526,7 @@ export function Header() {
           ) : (
             <>
               <Link to="/login" onClick={closeMenu} style={{
-                fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                fontFamily: FONT,
                 fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
                 textTransform: 'uppercase', color: '#888', textDecoration: 'none',
               }}>
@@ -399,7 +534,7 @@ export function Header() {
               </Link>
               <span style={{ color: '#ddd', fontSize: 11 }}>·</span>
               <Link to="/register" onClick={closeMenu} style={{
-                fontFamily: "'Helvetica Neue', Arial, sans-serif",
+                fontFamily: FONT,
                 fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
                 textTransform: 'uppercase', color: '#888', textDecoration: 'none',
               }}>
