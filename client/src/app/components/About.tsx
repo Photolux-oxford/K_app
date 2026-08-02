@@ -78,7 +78,7 @@ export function About() {
           >
             <img
               src={KAY_PHOTO}
-              alt="Kay Tubillla — photographer"
+              alt="Photolux Oxford — photographer"
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
           </div>
@@ -101,7 +101,7 @@ export function About() {
               lineHeight: 1.1,
             }}
           >
-            Kay Tubillla
+            Photolux Oxford
           </h2>
 
           <div
@@ -113,7 +113,7 @@ export function About() {
             <p style={{
               fontSize: 15, lineHeight: 1.85, color: '#555', marginBottom: 20, fontWeight: 400,
             }}>
-              Based in Oxford, Kay has spent years developing a quiet, precise approach to photography
+              Based in Oxford, Photolux Oxford has spent years developing a quiet, precise approach to photography
               — one that puts subjects at ease and captures genuinely unguarded moments.
             </p>
             <p style={{
@@ -127,7 +127,7 @@ export function About() {
               fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase',
               color: '#888', fontWeight: 500,
             }}>
-              Oxford & Surrounding Area
+              Oxford Studio
             </p>
           </div>
         </div>

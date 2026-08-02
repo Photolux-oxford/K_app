@@ -1,29 +1,57 @@
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Polygon, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import { api } from '../lib/api';
 
-interface Coordinate {
-  lat: number;
-  lng: number;
-}
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIcon2x,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
 
-// react-leaflet expects [lat, lng] tuples
 type LatLngTuple = [number, number];
 
 const OXFORD_CENTER: LatLngTuple = [51.7520, -1.2577];
 
+interface StudioPayload {
+  studio_name: string;
+  studio_address: string;
+  studio_lat: number | null;
+  studio_lng: number | null;
+}
+
+function Recenter({ center }: { center: LatLngTuple }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, 15);
+  }, [map, center]);
+  return null;
+}
+
 export function ServiceAreaMap() {
-  const [polygon, setPolygon] = useState<Coordinate[]>([]);
+  const [studio, setStudio] = useState<StudioPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<{ polygon: Coordinate[] }>('/service-area/')
-      .then(data => setPolygon(data.polygon))
-      .catch(() => setPolygon([]))
+    api.get<StudioPayload>('/service-area/')
+      .then(data => setStudio({
+        studio_name: data.studio_name ?? '',
+        studio_address: data.studio_address ?? '',
+        studio_lat: data.studio_lat ?? null,
+        studio_lng: data.studio_lng ?? null,
+      }))
+      .catch(() => setStudio(null))
       .finally(() => setLoading(false));
   }, []);
 
-  const positions: LatLngTuple[] = polygon.map(p => [p.lat, p.lng]);
+  const hasPin = studio?.studio_lat != null && studio?.studio_lng != null;
+  const center: LatLngTuple = hasPin
+    ? [studio!.studio_lat!, studio!.studio_lng!]
+    : OXFORD_CENTER;
 
   return (
     <div style={{ position: 'relative' }}>
@@ -37,50 +65,39 @@ export function ServiceAreaMap() {
         </div>
       )}
       <MapContainer
-        center={OXFORD_CENTER}
-        zoom={12}
+        center={center}
+        zoom={hasPin ? 15 : 12}
+        className="service-area-map"
         style={{ height: 480, width: '100%', borderRadius: 4 }}
         scrollWheelZoom={false}
-        zoomControl={true}
+        zoomControl
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-
-        {positions.length >= 3 && (
-          <Polygon
-            positions={positions}
-            pathOptions={{
-              color: '#111',
-              fillColor: '#111',
-              fillOpacity: 0.12,
-              weight: 2,
-              dashArray: '6 4',
-            }}
-          >
-            <Tooltip sticky>Kay's home visit zone</Tooltip>
-          </Polygon>
-        )}
-
-        {positions.length < 3 && !loading && (
-          // Render nothing — zone not yet configured by Kay
-          null
+        {hasPin && (
+          <>
+            <Recenter center={center} />
+            <Marker position={center}>
+              <Popup>
+                <strong>{studio!.studio_name || 'Photolux Oxford Studio'}</strong>
+                {studio!.studio_address && (
+                  <>
+                    <br />
+                    {studio!.studio_address}
+                  </>
+                )}
+              </Popup>
+            </Marker>
+          </>
         )}
       </MapContainer>
 
-      <div style={{
-        marginTop: 12, fontSize: 12, color: '#777',
-        display: 'flex', alignItems: 'center', gap: 8,
-      }}>
-        <span style={{
-          display: 'inline-block', width: 16, height: 16,
-          background: 'rgba(0,0,0,0.12)', border: '2px dashed #111',
-          borderRadius: 2, flexShrink: 0,
-        }} />
-        {positions.length >= 3
-          ? 'Shaded area: Kay can come to you for your session'
-          : 'Service area not yet configured — check back soon'}
+      <div style={{ marginTop: 12, fontSize: 12, color: '#777', lineHeight: 1.5 }}>
+        {hasPin
+          ? (studio!.studio_address || studio!.studio_name || 'Photolux Oxford studio location')
+          : 'Studio location coming soon — check back shortly.'}
       </div>
     </div>
   );

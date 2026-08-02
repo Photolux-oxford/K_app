@@ -100,7 +100,7 @@ export function HomepagePreview({
           fontSize: compact ? 22 : 32, fontWeight: 300, letterSpacing: '-0.01em',
           color: '#fff', margin: 0,
         }}>
-          Kay Tubilla
+          Photolux Oxford
         </h2>
         {/* Bottom-right buttons */}
         <div style={{

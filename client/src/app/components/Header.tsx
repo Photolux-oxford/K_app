@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type CSSProperties, type ReactNode } from 
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotificationContext } from '../context/NotificationContext';
+import { PageBackButton } from './PageBackButton';
 import gsap from 'gsap';
 
 const NAV_LINKS = [
@@ -67,6 +68,19 @@ function NavHoverLink({
   );
 }
 
+const overlayLinkStyle: CSSProperties = {
+  fontSize: 'clamp(28px, 8vw, 40px)',
+  fontWeight: 300,
+  letterSpacing: '-0.01em',
+  color: '#111',
+  textDecoration: 'none',
+  fontFamily: FONT,
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  cursor: 'pointer',
+};
+
 export function Header() {
   const { user, logout } = useAuth();
   const { unreadCount } = useNotificationContext();
@@ -75,6 +89,7 @@ export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
 
+  const isHome = location.pathname === '/';
   const isAppPage = APP_PATHS.some(
     p => location.pathname === p || location.pathname.startsWith(`${p}/`)
   );
@@ -94,7 +109,6 @@ export function Header() {
     closeMenu();
     if (location.pathname !== '/') {
       navigate('/');
-      // Wait for home mount before scrolling
       setTimeout(() => scrollTo(id), 350);
       return;
     }
@@ -119,6 +133,18 @@ export function Header() {
     }
   }, [menuOpen]);
 
+  // Close overlay when resizing to desktop
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth >= 768 && menuOpen) {
+        setMenuOpen(false);
+        document.body.style.overflow = '';
+      }
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [menuOpen]);
+
   const messagesBadge = unreadCount > 0 ? (
     <span style={{
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -131,11 +157,21 @@ export function Header() {
     </span>
   ) : null;
 
+  const brandMark = (
+    <span style={{
+      fontFamily: FONT,
+      fontSize: 13, fontWeight: 500, letterSpacing: '0.08em',
+      textTransform: 'uppercase', color: '#111',
+    }}>
+      Photolux Oxford
+    </span>
+  );
+
   return (
     <>
       <header style={{
         position: 'fixed', top: 0, left: 0, right: 0,
-        zIndex: 1000,
+        zIndex: menuOpen ? 2001 : 1000,
         background: 'rgba(255,255,255,0.92)',
         backdropFilter: 'blur(12px)',
         borderBottom: '1px solid rgba(0,0,0,0.06)',
@@ -145,48 +181,44 @@ export function Header() {
           padding: '0 20px',
           height: 64,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          position: 'relative',
         }}>
 
-          {/* Left cluster: mobile hamburger + desktop logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <button
-              onClick={() => setMenuOpen(true)}
-              className="md:hidden"
-              aria-label="Open menu"
-              style={{
-                background: 'none', border: 'none', padding: '6px 4px',
-                cursor: 'pointer', display: 'flex', flexDirection: 'column',
-                gap: 5, justifyContent: 'center',
-              }}
-            >
-              <span style={{ display: 'block', width: 20, height: 1.5, background: '#111' }} />
-              <span style={{ display: 'block', width: 20, height: 1.5, background: '#111' }} />
-              <span style={{ display: 'block', width: 20, height: 1.5, background: '#111' }} />
-            </button>
-
+          {/* Left: back (non-home, menu closed) + desktop logo */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            minWidth: 44, zIndex: 1,
+          }}>
+            {!isHome && !menuOpen && <PageBackButton />}
             <Link to="/" className="hidden md:inline" style={{ textDecoration: 'none' }}>
               <span style={{
                 fontFamily: FONT,
                 fontSize: 13, fontWeight: 500, letterSpacing: '0.12em',
                 textTransform: 'uppercase', color: '#111',
               }}>
-                Kay Tubillla
+                Photolux Oxford
               </span>
             </Link>
           </div>
 
-          <Link to="/" className="md:hidden" style={{ textDecoration: 'none' }}>
-            <span style={{
-              fontFamily: FONT,
-              fontSize: 13, fontWeight: 500, letterSpacing: '0.08em',
-              textTransform: 'uppercase', color: '#111',
-            }}>
-              Kay Tubillla
-            </span>
+          {/* Center brand — mobile only */}
+          <Link
+            to="/"
+            className="md:hidden"
+            onClick={closeMenu}
+            style={{
+              textDecoration: 'none',
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 2001,
+            }}
+          >
+            {brandMark}
           </Link>
 
-          {/* Center nav — desktop */}
-          <nav style={{ display: 'flex', gap: 32 }} className="hidden md:flex">
+          {/* Center nav — desktop only (no inline display — Tailwind controls visibility) */}
+          <nav className="hidden md:flex" style={{ gap: 32 }}>
             {showAppNav ? (
               <>
                 <NavHoverLink to="/" muted>
@@ -230,7 +262,7 @@ export function Header() {
                     if (location.pathname !== '/service-area') e.currentTarget.style.color = '#444';
                   }}
                 >
-                  Area
+                  Studio
                 </Link>
                 {showAccountLinks && (
                   <>
@@ -254,12 +286,12 @@ export function Header() {
             )}
           </nav>
 
-          {/* Right side */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* Right: desktop CTAs + mobile burger */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 16,
+            minWidth: 44, justifyContent: 'flex-end', zIndex: 1,
+          }}>
 
-            <Link to="/book" className="hidden md:inline" style={desktopNavLinkStyle()}>
-              Request a Session
-            </Link>
             <Link to="/editing" className="hidden md:inline" style={desktopNavLinkStyle()}>
               Editing
             </Link>
@@ -318,14 +350,58 @@ export function Header() {
               </>
             )}
 
-            <div className="md:hidden" style={{ width: 28 }} />
+            {/* Burger — mobile only; no inline display so md:hidden works */}
+            <button
+              type="button"
+              onClick={() => setMenuOpen(prev => !prev)}
+              className="md:hidden header-burger"
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen}
+              style={{
+                background: 'none', border: 'none', padding: '10px 4px',
+                cursor: 'pointer',
+                position: 'relative', zIndex: 2001,
+                width: 32, height: 32,
+              }}
+            >
+              <span
+                className="header-burger-line"
+                style={{
+                  display: 'block', width: 20, height: 1.5, background: '#111',
+                  position: 'absolute', left: 6,
+                  top: menuOpen ? 15 : 10,
+                  transform: menuOpen ? 'rotate(45deg)' : 'none',
+                  transition: 'top 0.2s, transform 0.2s',
+                }}
+              />
+              <span
+                className="header-burger-line"
+                style={{
+                  display: 'block', width: 20, height: 1.5, background: '#111',
+                  position: 'absolute', left: 6, top: 15,
+                  opacity: menuOpen ? 0 : 1,
+                  transition: 'opacity 0.15s',
+                }}
+              />
+              <span
+                className="header-burger-line"
+                style={{
+                  display: 'block', width: 20, height: 1.5, background: '#111',
+                  position: 'absolute', left: 6,
+                  top: menuOpen ? 15 : 20,
+                  transform: menuOpen ? 'rotate(-45deg)' : 'none',
+                  transition: 'top 0.2s, transform 0.2s',
+                }}
+              />
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Full-screen mobile overlay */}
+      {/* Full-screen mobile overlay (hidden on desktop via responsive.css) */}
       <div
         ref={overlayRef}
+        className="header-mobile-overlay"
         style={{
           position: 'fixed', inset: 0, zIndex: 2000,
           background: '#fff',
@@ -335,56 +411,22 @@ export function Header() {
           fontFamily: FONT,
         }}
       >
-        <button
-          onClick={closeMenu}
-          aria-label="Close menu"
-          style={{
-            position: 'absolute', top: 20, right: 24,
-            background: 'none', border: 'none',
-            fontSize: 32, color: '#111', cursor: 'pointer',
-            lineHeight: 1, padding: 4,
-          }}
-        >
-          ×
-        </button>
-
         <nav style={{
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', gap: 24, marginBottom: 48,
         }}>
           {showAppNav ? (
             <>
-              <Link
-                to="/"
-                onClick={closeMenu}
-                style={{
-                  fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
-                  letterSpacing: '-0.01em', color: '#111',
-                  textDecoration: 'none', fontFamily: FONT,
-                }}
-              >
+              <Link to="/" onClick={closeMenu} style={overlayLinkStyle}>
                 Home
               </Link>
-              <Link
-                to="/dashboard"
-                onClick={closeMenu}
-                style={{
-                  fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
-                  letterSpacing: '-0.01em', color: '#111',
-                  textDecoration: 'none', fontFamily: FONT,
-                }}
-              >
+              <Link to="/dashboard" onClick={closeMenu} style={overlayLinkStyle}>
                 Bookings
               </Link>
               <Link
                 to="/messages"
                 onClick={closeMenu}
-                style={{
-                  fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
-                  letterSpacing: '-0.01em', color: '#111',
-                  textDecoration: 'none', fontFamily: FONT,
-                  display: 'flex', alignItems: 'center', gap: 10,
-                }}
+                style={{ ...overlayLinkStyle, display: 'flex', alignItems: 'center', gap: 10 }}
               >
                 Messages
                 {messagesBadge}
@@ -396,51 +438,23 @@ export function Header() {
                 <button
                   key={id}
                   onClick={() => handleNavClick(id)}
-                  style={{
-                    background: 'none', border: 'none', padding: 0,
-                    fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
-                    letterSpacing: '-0.01em', color: '#111',
-                    cursor: 'pointer',
-                    fontFamily: FONT,
-                  }}
+                  style={overlayLinkStyle}
                 >
                   {label}
                 </button>
               ))}
-              <Link
-                to="/service-area"
-                onClick={closeMenu}
-                style={{
-                  fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
-                  letterSpacing: '-0.01em', color: '#111',
-                  textDecoration: 'none',
-                  fontFamily: FONT,
-                }}
-              >
-                Area
+              <Link to="/service-area" onClick={closeMenu} style={overlayLinkStyle}>
+                Studio
               </Link>
               {showAccountLinks && (
                 <>
-                  <Link
-                    to="/dashboard"
-                    onClick={closeMenu}
-                    style={{
-                      fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
-                      letterSpacing: '-0.01em', color: '#111',
-                      textDecoration: 'none', fontFamily: FONT,
-                    }}
-                  >
+                  <Link to="/dashboard" onClick={closeMenu} style={overlayLinkStyle}>
                     Bookings
                   </Link>
                   <Link
                     to="/messages"
                     onClick={closeMenu}
-                    style={{
-                      fontSize: 'clamp(28px, 8vw, 40px)', fontWeight: 300,
-                      letterSpacing: '-0.01em', color: '#111',
-                      textDecoration: 'none', fontFamily: FONT,
-                      display: 'flex', alignItems: 'center', gap: 10,
-                    }}
+                    style={{ ...overlayLinkStyle, display: 'flex', alignItems: 'center', gap: 10 }}
                   >
                     Messages
                     {messagesBadge}
@@ -452,45 +466,61 @@ export function Header() {
         </nav>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
-          {!user && (
-            <Link
-              to="/login"
-              onClick={closeMenu}
-              style={{
-                padding: '14px 40px', background: '#111', color: '#fff',
-                fontSize: 11, fontWeight: 600, letterSpacing: '0.15em',
-                textTransform: 'uppercase', textDecoration: 'none',
-              }}
-            >
-              Log In
-            </Link>
-          )}
-          <Link
-            to="/book"
-            onClick={closeMenu}
-            style={{
-              padding: '14px 40px',
-              background: user ? '#111' : 'transparent',
-              color: user ? '#fff' : '#111',
-              border: user ? 'none' : '1px solid #111',
-              fontSize: 11, fontWeight: 600, letterSpacing: '0.15em',
-              textTransform: 'uppercase', textDecoration: 'none',
-            }}
-          >
-            Request a Session
-          </Link>
           <Link
             to="/editing"
             onClick={closeMenu}
             style={{
-              padding: '13px 40px',
-              border: '1px solid #111', color: '#111',
+              padding: '14px 40px',
+              background: '#111', color: '#fff',
+              border: 'none',
               fontSize: 11, fontWeight: 600, letterSpacing: '0.15em',
               textTransform: 'uppercase', textDecoration: 'none',
             }}
           >
             Submit for Editing
           </Link>
+          {!user && (
+            <>
+              <Link
+                to="/login"
+                onClick={closeMenu}
+                style={{
+                  padding: '12px 40px',
+                  border: '1px solid #111', color: '#111',
+                  fontSize: 11, fontWeight: 600, letterSpacing: '0.15em',
+                  textTransform: 'uppercase', textDecoration: 'none',
+                }}
+              >
+                Log In
+              </Link>
+              <Link
+                to="/register"
+                onClick={closeMenu}
+                style={{
+                  padding: '10px 0',
+                  fontFamily: FONT,
+                  fontSize: 11, fontWeight: 500, letterSpacing: '0.12em',
+                  textTransform: 'uppercase', color: '#888', textDecoration: 'none',
+                }}
+              >
+                Register
+              </Link>
+            </>
+          )}
+          {user && (
+            <button
+              type="button"
+              onClick={() => { closeMenu(); handleLogout(); }}
+              style={{
+                background: 'none', border: 'none', padding: '10px 0',
+                fontFamily: FONT,
+                fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
+                textTransform: 'uppercase', color: '#888', cursor: 'pointer',
+              }}
+            >
+              Log Out
+            </button>
+          )}
           {user?.is_staff && (
             <Link
               to="/admin"
@@ -504,43 +534,6 @@ export function Header() {
             >
               Admin Panel
             </Link>
-          )}
-        </div>
-
-        <div style={{
-          position: 'absolute', bottom: 40,
-          display: 'flex', gap: 16, alignItems: 'center',
-        }}>
-          {user ? (
-            <button
-              onClick={() => { closeMenu(); handleLogout(); }}
-              style={{
-                background: 'none', border: 'none', padding: 0,
-                fontFamily: FONT,
-                fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
-                textTransform: 'uppercase', color: '#888', cursor: 'pointer',
-              }}
-            >
-              Log Out
-            </button>
-          ) : (
-            <>
-              <Link to="/login" onClick={closeMenu} style={{
-                fontFamily: FONT,
-                fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
-                textTransform: 'uppercase', color: '#888', textDecoration: 'none',
-              }}>
-                Log In
-              </Link>
-              <span style={{ color: '#ddd', fontSize: 11 }}>·</span>
-              <Link to="/register" onClick={closeMenu} style={{
-                fontFamily: FONT,
-                fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
-                textTransform: 'uppercase', color: '#888', textDecoration: 'none',
-              }}>
-                Register
-              </Link>
-            </>
           )}
         </div>
       </div>

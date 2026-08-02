@@ -15,6 +15,7 @@ urlpatterns = [
     path('health/', views.health_check),
     path('editing-requests/',                views.create_editing_request),
     path('editing-requests/<int:pk>/files/', views.upload_editing_file),
+    path('editing-requests/<int:pk>/checkout/', views.editing_request_checkout),
 
     # Message endpoints
     path('messages/threads/', views.message_threads),
@@ -35,6 +36,8 @@ urlpatterns = [
     path('admin/availability/',          views.admin_availability_list),
     path('admin/availability/upsert/',   views.admin_availability_upsert),
     path('admin/availability/<int:pk>/', views.admin_availability_delete),
+    path('admin/calendar/', views.admin_calendar_events),
+    path('admin/calendar/<int:pk>/', views.admin_calendar_event_detail),
 
     # Portfolio admin
     path('admin/portfolio/categories/', portfolio_views.admin_portfolio_categories),

@@ -180,6 +180,7 @@ export function ChatPanel({ threadType, threadId, isAdmin }: ChatPanelProps) {
     ? ['declined', 'delivered']
     : ['declined', 'cancelled', 'completed'];
   const canSendPayment = isAdmin
+    && threadType === 'booking'
     && !terminalStatuses.includes(meta?.status ?? '')
     && !paymentPaid;
 
@@ -199,7 +200,7 @@ export function ChatPanel({ threadType, threadId, isAdmin }: ChatPanelProps) {
           <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>
             {meta.status && `Status: ${meta.status}`}
             {meta.status && meta.quoted_price && ' · '}
-            {meta.quoted_price && `Quote: £${meta.quoted_price}`}
+            {meta.quoted_price && `${threadType === 'editing' ? 'Package price' : 'Quote'}: £${meta.quoted_price}`}
             {paymentPaid && ' · Paid'}
             {paymentPending && !paymentPaid && meta.payment?.amount && ` · Payment pending — £${meta.payment.amount}`}
           </div>

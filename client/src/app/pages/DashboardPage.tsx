@@ -23,6 +23,7 @@ interface BookingRow {
   is_home_visit: boolean;
   date: string | null;
   block: string | null;
+  preferred_schedule?: string;
   status: string;
   notes?: string;
   access_instructions?: string;
@@ -107,7 +108,7 @@ export function DashboardPage() {
   return (
     <div style={{ minHeight: '100vh', background: '#fafafa' }}>
       <Header />
-      <main style={{ maxWidth: 900, margin: '0 auto', padding: '120px 32px 64px' }}>
+      <main className="dashboard-page" style={{ maxWidth: 900, margin: '0 auto', padding: '120px 32px 64px' }}>
         <h1 style={{ fontSize: 28, fontWeight: 300, marginBottom: 8 }}>My account</h1>
         <p style={{ color: '#888', fontSize: 14, marginBottom: 40 }}>
           Your bookings, editing jobs, and payments.{' '}
@@ -128,7 +129,7 @@ export function DashboardPage() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {data.bookings.map(b => (
-                    <div key={b.id} style={{
+                    <div key={b.id} className="dashboard-card-row" style={{
                       background: '#fff', border: '1px solid #eee', padding: 20,
                       display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between',
                     }}>
@@ -138,18 +139,22 @@ export function DashboardPage() {
                           <Badge label={b.status} />
                         </div>
                         <p style={{ margin: 0, fontSize: 13, color: '#666' }}>
-                          {[b.address_line_1 || b.location, b.address_line_2].filter(Boolean).join(', ')} · {b.postcode}
-                          {b.date && ` · ${b.date} (${b.block})`}
-                          {b.is_home_visit ? ' · Home visit' : ' · Studio'}
+                          Studio session
+                          {b.location ? ` · ${b.location}` : ''}
+                          {b.preferred_schedule
+                            ? ` · ${b.preferred_schedule}`
+                            : b.date
+                              ? ` · ${b.date} (${b.block})`
+                              : ''}
                         </p>
                         {b.phone && (
                           <p style={{ margin: '4px 0 0', fontSize: 12, color: '#555' }}>
                             Phone: {b.phone}
                           </p>
                         )}
-                        {b.access_instructions && (
+                        {b.notes && (
                           <p style={{ margin: '4px 0 0', fontSize: 12, color: '#888' }}>
-                            Access: {b.access_instructions}
+                            Notes: {b.notes}
                           </p>
                         )}
                       </div>
@@ -172,7 +177,7 @@ export function DashboardPage() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {data.editing_requests.map(e => (
-                    <div key={e.id} style={{
+                    <div key={e.id} className="dashboard-card-row" style={{
                       background: '#fff', border: '1px solid #eee', padding: 20,
                       display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'space-between',
                     }}>

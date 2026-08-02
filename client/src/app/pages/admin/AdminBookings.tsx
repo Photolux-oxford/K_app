@@ -12,6 +12,7 @@ interface Booking {
   address_line_2?: string;
   phone?: string;
   date: string | null;
+  preferred_schedule?: string;
   status: string;
   notes: string;
   access_instructions?: string;
@@ -260,30 +261,27 @@ export function AdminBookings() {
                     {b.session_type}
                   </td>
                   <td style={{ padding: '14px 16px', fontSize: 12, color: '#555', maxWidth: 180 }}>
-                    <div title={b.location}>
-                      {(b.address_line_1 || b.location).length > 40
-                        ? (b.address_line_1 || b.location).slice(0, 40) + '…'
-                        : (b.address_line_1 || b.location)}
-                    </div>
-                    {b.address_line_2 && (
-                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{b.address_line_2}</div>
+                    <div>Studio session</div>
+                    {b.location && (
+                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }} title={b.location}>
+                        {b.location.length > 40 ? b.location.slice(0, 40) + '…' : b.location}
+                      </div>
                     )}
                     {b.phone && (
                       <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>{b.phone}</div>
                     )}
-                    {b.is_home_visit === false && (
-                      <div style={{ fontSize: 10, color: '#d97706', marginTop: 2 }}>Studio visit</div>
-                    )}
-                    {b.access_instructions && (
-                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }} title={b.access_instructions}>
-                        Access: {b.access_instructions.length > 40 ? b.access_instructions.slice(0, 40) + '…' : b.access_instructions}
+                    {b.notes && (
+                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }} title={b.notes}>
+                        Notes: {b.notes.length > 40 ? b.notes.slice(0, 40) + '…' : b.notes}
                       </div>
                     )}
                   </td>
-                  <td style={{ padding: '14px 16px', fontSize: 12, color: '#555' }}>
-                    {b.date
-                      ? new Date(b.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-                      : <span style={{ color: '#ccc' }}>—</span>}
+                  <td style={{ padding: '14px 16px', fontSize: 12, color: '#555', maxWidth: 180 }}>
+                    {b.preferred_schedule
+                      ? b.preferred_schedule
+                      : b.date
+                        ? new Date(b.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+                        : <span style={{ color: '#ccc' }}>TBC via Messages</span>}
                   </td>
                   <td style={{ padding: '14px 16px' }}>
                     <StatusBadge status={b.status} />

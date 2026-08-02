@@ -191,6 +191,8 @@ class ServiceAreaAPITests(TestCase):
         res = self.client.get('/api/service-area/')
         self.assertEqual(res.status_code, 200)
         self.assertIn('polygon', res.data)
+        self.assertIn('studio_lat', res.data)
+        self.assertIn('studio_address', res.data)
 
     def test_patch_service_area_requires_staff(self):
         self.client.force_authenticate(user=self.customer)
@@ -208,6 +210,18 @@ class ServiceAreaAPITests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(res.data['polygon']), 3)
 
+    def test_patch_studio_location_as_staff(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.patch('/api/service-area/', {
+            'studio_name': 'Photolux Oxford Studio',
+            'studio_address': '1 High Street, Oxford',
+            'studio_lat': 51.752,
+            'studio_lng': -1.2577,
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['studio_name'], 'Photolux Oxford Studio')
+        self.assertEqual(res.data['studio_lat'], 51.752)
+
     def test_patch_rejects_invalid_polygon_format(self):
         self.client.force_authenticate(user=self.staff)
         res = self.client.patch('/api/service-area/', {'polygon': "not a list"}, format='json')
@@ -221,7 +235,7 @@ class ServiceAreaAPITests(TestCase):
         self.assertIn(res.status_code, [200, 503])
 
 
-class AdminAvailabilityAPITests(TestCase):
+class AdminCalendarAPITests(TestCase):
     def setUp(self):
         self.client = DRFClient()
         self.staff = User.objects.create_user(
@@ -234,122 +248,54 @@ class AdminAvailabilityAPITests(TestCase):
         )
 
     def test_list_requires_staff(self):
+        from content.models import AdminCalendarEvent
+        AdminCalendarEvent.objects.create(title='Shoot', date=datetime.date(2026, 5, 1))
         self.client.force_authenticate(user=self.customer)
-        res = self.client.get('/api/admin/availability/?month=2026-05')
+        res = self.client.get('/api/admin/calendar/?month=2026-05')
         self.assertEqual(res.status_code, 403)
 
-    def test_list_requires_month_param(self):
+    def test_create_and_list_event(self):
         self.client.force_authenticate(user=self.staff)
-        res = self.client.get('/api/admin/availability/')
-        self.assertEqual(res.status_code, 400)
+        res = self.client.post('/api/admin/calendar/', {
+            'title': 'Portrait shoot',
+            'date': '2026-05-10',
+            'start_time': '09:00',
+            'end_time': '11:00',
+            'notes': 'Client: Alex',
+        }, format='json')
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.data['title'], 'Portrait shoot')
+        listed = self.client.get('/api/admin/calendar/?month=2026-05')
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(len(listed.data), 1)
 
-    def test_list_returns_slots_for_month(self):
+    def test_update_and_delete_event(self):
+        from content.models import AdminCalendarEvent
         self.client.force_authenticate(user=self.staff)
-        AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 1), block='morning', status='available'
+        ev = AdminCalendarEvent.objects.create(
+            title='Old', date=datetime.date(2026, 5, 1),
         )
-        AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 6, 1), block='morning', status='available'
-        )
+        res = self.client.patch(f'/api/admin/calendar/{ev.id}/', {
+            'title': 'Updated',
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['title'], 'Updated')
+        deleted = self.client.delete(f'/api/admin/calendar/{ev.id}/')
+        self.assertEqual(deleted.status_code, 204)
+        self.assertEqual(AdminCalendarEvent.objects.count(), 0)
+
+    def test_deprecated_availability_returns_410(self):
+        self.client.force_authenticate(user=self.staff)
         res = self.client.get('/api/admin/availability/?month=2026-05')
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(len(res.data), 1)
-        self.assertEqual(res.data[0]['block'], 'morning')
-
-    def test_upsert_creates_slot(self):
-        self.client.force_authenticate(user=self.staff)
-        res = self.client.post('/api/admin/availability/upsert/', {
-            'date': '2026-05-01', 'block': 'morning', 'status': 'available'
-        }, format='json')
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(AvailabilitySlot.objects.count(), 1)
-        slot = AvailabilitySlot.objects.first()
-        self.assertEqual(slot.start_time, datetime.time(8, 0))
-        self.assertEqual(slot.end_time, datetime.time(11, 0))
-
-    def test_upsert_updates_existing_slot(self):
-        self.client.force_authenticate(user=self.staff)
-        AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 1), block='morning', status='available'
-        )
-        res = self.client.post('/api/admin/availability/upsert/', {
-            'date': '2026-05-01', 'block': 'morning', 'status': 'unavailable'
-        }, format='json')
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(AvailabilitySlot.objects.count(), 1)
-        self.assertEqual(AvailabilitySlot.objects.first().status, 'unavailable')
-
-    def test_upsert_rejects_invalid_block(self):
-        self.client.force_authenticate(user=self.staff)
-        res = self.client.post('/api/admin/availability/upsert/', {
-            'date': '2026-05-01', 'block': 'lunchtime', 'status': 'available'
-        }, format='json')
-        self.assertEqual(res.status_code, 400)
-
-    def test_delete_removes_slot(self):
-        self.client.force_authenticate(user=self.staff)
-        slot = AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 1), block='morning', status='available'
-        )
-        res = self.client.delete(f'/api/admin/availability/{slot.id}/')
-        self.assertEqual(res.status_code, 204)
-        self.assertEqual(AvailabilitySlot.objects.count(), 0)
-
-    def test_delete_rejects_booked_slot(self):
-        self.client.force_authenticate(user=self.staff)
-        slot = AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 1), block='morning',
-            status='available', is_booked=True
-        )
-        res = self.client.delete(f'/api/admin/availability/{slot.id}/')
-        self.assertEqual(res.status_code, 400)
-        self.assertEqual(AvailabilitySlot.objects.count(), 1)
+        self.assertEqual(res.status_code, 410)
+        res2 = self.client.get('/api/availability/?month=2026-05')
+        self.assertEqual(res2.status_code, 410)
 
 
 class CustomerAvailabilityAPITests(TestCase):
-    def setUp(self):
-        self.client = DRFClient()
-
-    def test_requires_month_param(self):
-        res = self.client.get('/api/availability/')
-        self.assertEqual(res.status_code, 400)
-
-    def test_returns_available_and_potential_slots_only(self):
-        AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 1), block='morning', status='available'
-        )
-        AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 1), block='afternoon', status='potential'
-        )
-        AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 1), block='evening', status='unavailable'
-        )
+    def test_public_availability_gone(self):
         res = self.client.get('/api/availability/?month=2026-05')
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(len(res.data), 2)
-        statuses = {s['status'] for s in res.data}
-        self.assertNotIn('unavailable', statuses)
-
-    def test_returns_booked_slots_with_is_booked_true(self):
-        AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 1), block='morning',
-            status='available', is_booked=True
-        )
-        res = self.client.get('/api/availability/?month=2026-05')
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(len(res.data), 1)
-        self.assertTrue(res.data[0]['is_booked'])
-
-    def test_filters_by_month(self):
-        AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 1), block='morning', status='available'
-        )
-        AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 6, 1), block='morning', status='available'
-        )
-        res = self.client.get('/api/availability/?month=2026-05')
-        self.assertEqual(len(res.data), 1)
-        self.assertEqual(res.data[0]['date'], '2026-05-01')
+        self.assertEqual(res.status_code, 410)
 
 
 class CreateBookingAPITests(TestCase):
@@ -358,61 +304,38 @@ class CreateBookingAPITests(TestCase):
         self.customer = User.objects.create_user(
             username='cust@test.com', email='cust@test.com', password='pass'
         )
-        self.slot = AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 5, 10),
-            block='morning',
-            status='available',
-        )
 
     def test_requires_authentication(self):
         res = self.client.post('/api/bookings/', {
-            'slot_id': self.slot.id,
             'session_type': 'portrait',
-            'location': 'Oxford',
-            'postcode': 'OX1 1AA',
             'phone': '07000000000',
         }, format='json')
         self.assertEqual(res.status_code, 401)
 
-    def test_creates_booking_and_marks_slot_booked(self):
+    def test_creates_booking_without_slot(self):
         self.client.force_authenticate(user=self.customer)
         res = self.client.post('/api/bookings/', {
-            'slot_id': self.slot.id,
             'session_type': 'portrait',
-            'address_line_1': 'Christchurch Meadow',
-            'postcode': 'OX1 1AA',
             'phone': '07000000001',
             'notes': 'morning light preferred',
+            'preferred_schedule': 'Weekday mornings in May',
         }, format='json')
         self.assertEqual(res.status_code, 201)
         self.assertIn('id', res.data)
         self.assertEqual(res.data['status'], 'pending')
-        self.slot.refresh_from_db()
-        self.assertTrue(self.slot.is_booked)
+        booking = BookingRequest.objects.get(pk=res.data['id'])
+        self.assertIsNone(booking.slot_id)
+        self.assertEqual(booking.preferred_schedule, 'Weekday mornings in May')
+        self.assertFalse(booking.is_home_visit)
+        self.assertTrue(booking.location)
         self.assertTrue(
             Message.objects.filter(thread_type='booking', thread_id=res.data['id']).exists()
         )
 
-    def test_rejects_already_booked_slot(self):
-        self.client.force_authenticate(user=self.customer)
-        self.slot.is_booked = True
-        self.slot.save()
-        res = self.client.post('/api/bookings/', {
-            'slot_id': self.slot.id,
-            'session_type': 'portrait',
-            'location': 'Oxford',
-            'postcode': 'OX1 1AA',
-            'phone': '07000000002',
-        }, format='json')
-        self.assertEqual(res.status_code, 409)
-
     def test_rejects_invalid_session_type(self):
         self.client.force_authenticate(user=self.customer)
         res = self.client.post('/api/bookings/', {
-            'slot_id': self.slot.id,
             'session_type': 'circus',
-            'location': 'Oxford',
-            'postcode': 'OX1 1AA',
             'phone': '07000000003',
         }, format='json')
         self.assertEqual(res.status_code, 400)
@@ -420,20 +343,9 @@ class CreateBookingAPITests(TestCase):
     def test_rejects_missing_required_fields(self):
         self.client.force_authenticate(user=self.customer)
         res = self.client.post('/api/bookings/', {
-            'slot_id': self.slot.id,
+            'session_type': 'portrait',
         }, format='json')
         self.assertEqual(res.status_code, 400)
-
-    def test_rejects_nonexistent_slot(self):
-        self.client.force_authenticate(user=self.customer)
-        res = self.client.post('/api/bookings/', {
-            'slot_id': 99999,
-            'session_type': 'portrait',
-            'location': 'Oxford',
-            'postcode': 'OX1 1AA',
-            'phone': '07000000004',
-        }, format='json')
-        self.assertEqual(res.status_code, 404)
 
 
 class CreateEditingRequestAPITests(TestCase):
@@ -445,7 +357,7 @@ class CreateEditingRequestAPITests(TestCase):
 
     def test_requires_authentication(self):
         res = self.client.post('/api/editing-requests/', {
-            'style_notes': 'warm tones', 'turnaround': '1 week'
+            'style_notes': 'warm tones', 'package': 'standard'
         }, format='json')
         self.assertEqual(res.status_code, 401)
 
@@ -453,20 +365,22 @@ class CreateEditingRequestAPITests(TestCase):
         self.client.force_authenticate(user=self.customer)
         res = self.client.post('/api/editing-requests/', {
             'style_notes': 'warm tones, natural light',
-            'turnaround': 'within 2 weeks',
+            'package': 'standard',
         }, format='json')
         self.assertEqual(res.status_code, 201)
         self.assertIn('id', res.data)
         self.assertEqual(res.data['status'], 'requested')
+        self.assertEqual(res.data['package'], 'standard')
+        self.assertEqual(res.data['quoted_price'], '5.00')
 
     def test_rejects_missing_style_notes(self):
         self.client.force_authenticate(user=self.customer)
         res = self.client.post('/api/editing-requests/', {
-            'turnaround': '1 week'
+            'package': 'standard'
         }, format='json')
         self.assertEqual(res.status_code, 400)
 
-    def test_rejects_missing_turnaround(self):
+    def test_rejects_missing_package(self):
         self.client.force_authenticate(user=self.customer)
         res = self.client.post('/api/editing-requests/', {
             'style_notes': 'warm tones'
@@ -478,7 +392,9 @@ class CreateEditingRequestAPITests(TestCase):
         editing = EditingRequest.objects.create(
             customer=self.customer,
             style_notes='test notes',
-            turnaround='1 week',
+            turnaround='Within 1 week (email delivery)',
+            package='standard',
+            quoted_price='5.00',
         )
         from django.core.files.uploadedfile import SimpleUploadedFile
         fake_image = SimpleUploadedFile(
@@ -498,7 +414,9 @@ class CreateEditingRequestAPITests(TestCase):
         editing = EditingRequest.objects.create(
             customer=self.customer,
             style_notes='test notes',
-            turnaround='1 week',
+            turnaround='Within 1 week (email delivery)',
+            package='standard',
+            quoted_price='5.00',
         )
         from django.core.files.uploadedfile import SimpleUploadedFile
         big_file = SimpleUploadedFile(
@@ -518,7 +436,9 @@ class CreateEditingRequestAPITests(TestCase):
         editing = EditingRequest.objects.create(
             customer=self.customer,
             style_notes='test notes',
-            turnaround='1 week',
+            turnaround='Within 1 week (email delivery)',
+            package='standard',
+            quoted_price='5.00',
         )
         from django.core.files.uploadedfile import SimpleUploadedFile
         bad_file = SimpleUploadedFile(
@@ -538,7 +458,9 @@ class CreateEditingRequestAPITests(TestCase):
         editing = EditingRequest.objects.create(
             customer=other,
             style_notes='test notes',
-            turnaround='1 week',
+            turnaround='Within 1 week (email delivery)',
+            package='standard',
+            quoted_price='5.00',
         )
         self.client.force_authenticate(user=self.customer)
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -549,6 +471,67 @@ class CreateEditingRequestAPITests(TestCase):
             format='multipart',
         )
         self.assertEqual(res.status_code, 404)
+
+    def _add_files(self, editing, n):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        for i in range(n):
+            f = SimpleUploadedFile(f'photo{i}.jpg', b'data', content_type='image/jpeg')
+            res = self.client.post(
+                f'/api/editing-requests/{editing.id}/files/',
+                {'file': f},
+                format='multipart',
+            )
+            self.assertEqual(res.status_code, 201)
+
+    def test_checkout_standard_package(self):
+        from django.test.utils import override_settings
+        self.client.force_authenticate(user=self.customer)
+        with override_settings(STRIPE_SECRET_KEY=''):
+            create = self.client.post('/api/editing-requests/', {
+                'style_notes': 'warm tones',
+                'package': 'standard',
+            }, format='json')
+            editing_id = create.data['id']
+            editing = EditingRequest.objects.get(pk=editing_id)
+            self._add_files(editing, 2)
+            res = self.client.post(f'/api/editing-requests/{editing_id}/checkout/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['status'], 'confirmed')
+        self.assertEqual(res.data['quoted_price'], '5.00')
+        self.assertIsNotNone(res.data['payment']['payment_link_url'])
+        payment = Payment.objects.get(editing_request_id=editing_id)
+        self.assertEqual(payment.status, 'pending')
+        self.assertEqual(float(payment.amount), 5.00)
+
+    def test_checkout_rejects_too_few_files(self):
+        from django.test.utils import override_settings
+        self.client.force_authenticate(user=self.customer)
+        with override_settings(STRIPE_SECRET_KEY=''):
+            create = self.client.post('/api/editing-requests/', {
+                'style_notes': 'warm tones',
+                'package': 'standard',
+            }, format='json')
+            editing_id = create.data['id']
+            res = self.client.post(f'/api/editing-requests/{editing_id}/checkout/')
+        self.assertEqual(res.status_code, 400)
+
+    def test_upload_rejects_over_package_max(self):
+        self.client.force_authenticate(user=self.customer)
+        create = self.client.post('/api/editing-requests/', {
+            'style_notes': 'warm tones',
+            'package': 'standard',
+        }, format='json')
+        editing_id = create.data['id']
+        editing = EditingRequest.objects.get(pk=editing_id)
+        self._add_files(editing, 3)
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        extra = SimpleUploadedFile('extra.jpg', b'data', content_type='image/jpeg')
+        res = self.client.post(
+            f'/api/editing-requests/{editing_id}/files/',
+            {'file': extra},
+            format='multipart',
+        )
+        self.assertEqual(res.status_code, 400)
 
 
 class MessageAPITests(TestCase):
@@ -1194,31 +1177,19 @@ class AccessInstructionsBookingTests(TestCase):
         self.customer = User.objects.create_user(
             username='access@test.com', email='access@test.com', password='pass',
         )
-        self.slot = AvailabilitySlot.objects.create(
-            date=datetime.date(2026, 9, 1),
-            block='afternoon',
-            status='available',
-        )
 
-    def test_create_booking_saves_access_instructions(self):
-        from unittest.mock import patch
+    def test_create_studio_booking_with_notes(self):
         self.client.force_authenticate(user=self.customer)
-        with patch('content.views._geocode_postcode', return_value=(51.75, -1.27, {})):
-            res = self.client.post('/api/bookings/', {
-                'slot_id': self.slot.id,
-                'session_type': 'portrait',
-                'address_line_1': '12 High Street',
-                'address_line_2': 'Osney',
-                'postcode': 'OX2 0AN',
-                'phone': '07475338565',
-                'notes': 'Warm tones',
-                'access_instructions': 'Ring the gate buzzer twice',
-            }, format='json')
+        res = self.client.post('/api/bookings/', {
+            'session_type': 'portrait',
+            'phone': '07475338565',
+            'notes': 'Warm tones, family of four',
+            'preferred_schedule': 'Saturday afternoon',
+        }, format='json')
         self.assertEqual(res.status_code, 201)
         booking = BookingRequest.objects.get(pk=res.data['id'])
-        self.assertEqual(booking.access_instructions, 'Ring the gate buzzer twice')
-        self.assertEqual(booking.notes, 'Warm tones')
+        self.assertEqual(booking.notes, 'Warm tones, family of four')
         self.assertEqual(booking.phone, '07475338565')
-        self.assertEqual(booking.address_line_1, '12 High Street')
-        self.assertEqual(booking.address_line_2, 'Osney')
+        self.assertEqual(booking.preferred_schedule, 'Saturday afternoon')
         self.assertFalse(booking.is_home_visit)
+        self.assertEqual(booking.access_instructions, '')

@@ -2,16 +2,16 @@ import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useNotificationContext } from '../../context/NotificationContext';
 
-type AdminTab = 'dashboard' | 'portfolio' | 'bookings' | 'availability' | 'messages' | 'editing' | 'service-area';
+type AdminTab = 'dashboard' | 'portfolio' | 'bookings' | 'calendar' | 'messages' | 'editing' | 'service-area';
 
 const TABS: { label: string; tab: AdminTab; path: string }[] = [
   { label: 'Dashboard',    tab: 'dashboard',    path: '/admin' },
   { label: 'Portfolio',    tab: 'portfolio',    path: '/admin/portfolio' },
   { label: 'Bookings',     tab: 'bookings',     path: '/admin/bookings' },
-  { label: 'Availability', tab: 'availability', path: '/admin/availability' },
+  { label: 'Calendar',     tab: 'calendar',     path: '/admin/calendar' },
   { label: 'Messages',    tab: 'messages',     path: '/admin/messages' },
   { label: 'Editing',      tab: 'editing',      path: '/admin/editing' },
-  { label: 'Service Area', tab: 'service-area', path: '/admin/service-area' },
+  { label: 'Studio & Area', tab: 'service-area', path: '/admin/service-area' },
 ];
 
 interface AdminLayoutProps {

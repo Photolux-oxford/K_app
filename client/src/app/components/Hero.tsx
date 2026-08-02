@@ -97,6 +97,7 @@ export function Hero() {
       {/* Top-left: branding */}
       <div
         ref={textRef}
+        className="hero-oxford"
         style={{
           position: 'absolute', top: 32, left: 40, zIndex: 2,
           fontFamily: "'Helvetica Neue', Arial, sans-serif",
@@ -112,17 +113,20 @@ export function Hero() {
       </div>
 
       {/* Bottom-left: photographer name + slide dots */}
-      <div style={{
-        position: 'absolute', bottom: 32, left: 40, zIndex: 2,
-        fontFamily: "'Helvetica Neue', Arial, sans-serif",
-        color: '#fff',
-      }}>
+      <div
+        className="hero-name"
+        style={{
+          position: 'absolute', bottom: 32, left: 40, zIndex: 2,
+          fontFamily: "'Helvetica Neue', Arial, sans-serif",
+          color: '#fff',
+        }}
+      >
         <h1 style={{
           fontSize: 'clamp(28px, 4vw, 44px)', fontWeight: 300,
           letterSpacing: '-0.01em', lineHeight: 1.1,
           margin: '0 0 12px 0',
         }}>
-          Kay Tubilla
+          Photolux Oxford
         </h1>
         {slides.length > 1 && (
           <div style={{ display: 'flex', gap: 6 }}>
@@ -144,11 +148,14 @@ export function Hero() {
       </div>
 
       {/* Bottom-right: action buttons */}
-      <div style={{
-        position: 'absolute', bottom: 32, right: 40, zIndex: 2,
-        display: 'flex', gap: 12, alignItems: 'flex-end',
-        fontFamily: "'Helvetica Neue', Arial, sans-serif",
-      }}>
+      <div
+        className="hero-ctas"
+        style={{
+          position: 'absolute', bottom: 32, right: 40, zIndex: 2,
+          display: 'flex', gap: 12, alignItems: 'flex-end',
+          fontFamily: "'Helvetica Neue', Arial, sans-serif",
+        }}
+      >
         <Link to="/book" style={{
           padding: '10px 22px', background: 'rgba(255,255,255,0.95)', color: '#111',
           fontSize: 10, fontWeight: 600, letterSpacing: '0.12em',

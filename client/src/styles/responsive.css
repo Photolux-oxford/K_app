@@ -3,6 +3,41 @@
    Uses !important to override inline styles set in React.
    ============================================================ */
 
+/* --- Header mobile overlay (inline display:flex must not win on desktop) --- */
+@media (min-width: 769px) {
+  .header-mobile-overlay {
+    display: none !important;
+    pointer-events: none !important;
+  }
+}
+
+/* --- Hero --- */
+@media (max-width: 768px) {
+  .hero-oxford {
+    top: 80px !important;
+    left: 20px !important;
+  }
+  .hero-name {
+    left: 20px !important;
+    right: 20px !important;
+    bottom: 140px !important;
+  }
+  .hero-ctas {
+    left: 20px !important;
+    right: 20px !important;
+    bottom: 32px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+  .hero-ctas a {
+    width: 100% !important;
+    text-align: center !important;
+    box-sizing: border-box !important;
+  }
+}
+
 /* --- Portfolio --- */
 @media (max-width: 768px) {
   .portfolio-grid {
@@ -40,7 +75,7 @@
     grid-template-columns: 1fr !important;
     gap: 40px !important;
   }
-  /* Text column first, photo column second */
+  /* Photo first on mobile */
   .about-grid > div:first-child {
     order: 2;
   }
@@ -65,5 +100,86 @@
     flex-direction: column !important;
     align-items: flex-start !important;
     gap: 16px !important;
+  }
+}
+
+/* --- Editing packages + layout --- */
+@media (max-width: 768px) {
+  .editing-layout {
+    flex-direction: column !important;
+  }
+  .editing-packages {
+    grid-template-columns: 1fr !important;
+  }
+  .editing-rail {
+    flex: none !important;
+    width: 100% !important;
+  }
+}
+
+/* --- Book confirm rows --- */
+@media (max-width: 768px) {
+  .book-confirm-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+  }
+  .book-confirm-label {
+    width: auto !important;
+    flex: none !important;
+  }
+}
+
+/* --- Service area map --- */
+@media (max-width: 768px) {
+  .service-area-map {
+    height: 260px !important;
+  }
+  .service-area-page {
+    padding: 40px 16px !important;
+  }
+}
+
+/* --- Dashboard cards --- */
+@media (max-width: 768px) {
+  .dashboard-page {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+  .dashboard-card-row {
+    flex-wrap: wrap !important;
+  }
+}
+
+/* --- Auth forms --- */
+@media (max-width: 768px) {
+  .auth-page {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}
+
+/* --- Form controls: avoid overflow from width 100% + padding --- */
+input,
+textarea,
+select,
+button {
+  box-sizing: border-box;
+}
+
+/* Prevent accidental horizontal scroll on phones */
+@media (max-width: 768px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+}
+
+/* --- Hide custom cursor on touch / no-hover devices --- */
+@media (hover: none) {
+  .custom-cursor,
+  .cursor-dot,
+  .cursor-follower {
+    display: none !important;
   }
 }

@@ -1,19 +1,24 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 
 export function Cursor() {
   const dotRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
+  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
-    // Only on desktop (non-touch)
+    // Only on devices that support hover (skip phones)
     if (window.matchMedia('(hover: none)').matches) return;
+    setEnabled(true);
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
 
     const dot = dotRef.current;
     const ring = ringRef.current;
     if (!dot || !ring) return;
 
-    // Hide default cursor on body
     document.body.style.cursor = 'none';
 
     const xDot  = gsap.quickTo(dot,  'x', { duration: 0.1, ease: 'none' });
@@ -33,13 +38,15 @@ export function Cursor() {
       window.removeEventListener('mousemove', onMove);
       document.body.style.cursor = '';
     };
-  }, []);
+  }, [enabled]);
+
+  if (!enabled) return null;
 
   return (
     <>
-      {/* Small solid dot */}
       <div
         ref={dotRef}
+        className="cursor-dot"
         style={{
           position: 'fixed',
           top: -4,
@@ -53,9 +60,9 @@ export function Cursor() {
           willChange: 'transform',
         }}
       />
-      {/* Larger trailing ring */}
       <div
         ref={ringRef}
+        className="cursor-follower"
         style={{
           position: 'fixed',
           top: -16,

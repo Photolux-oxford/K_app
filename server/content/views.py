@@ -11,7 +11,10 @@ from django.db.models import Max
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
-from .models import AvailabilitySlot, BookingRequest, EditingFile, EditingRequest, Message, PortfolioItem, ServiceArea, Payment
+from .models import (
+    AdminCalendarEvent, AvailabilitySlot, BookingRequest, EditingFile,
+    EditingRequest, Message, PortfolioItem, ServiceArea, Payment,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,20 +108,54 @@ def _place_suggestions_from_postcode_result(result, postcode):
 def service_area_detail(request):
     area = ServiceArea.get()
 
+    def payload():
+        return {
+            'polygon': area.polygon,
+            'studio_name': area.studio_name,
+            'studio_address': area.studio_address,
+            'studio_lat': area.studio_lat,
+            'studio_lng': area.studio_lng,
+            'updated_at': area.updated_at,
+        }
+
     if request.method == 'GET':
-        return Response({'polygon': area.polygon, 'updated_at': area.updated_at})
+        return Response(payload())
 
     # PATCH — staff only
     if not request.user.is_authenticated or not request.user.is_staff:
         return Response({'error': 'Staff access required.'}, status=403)
 
-    polygon = request.data.get('polygon')
-    if not isinstance(polygon, list):
-        return Response({'error': 'polygon must be a list of {lat, lng} objects.'}, status=400)
+    if 'polygon' in request.data:
+        polygon = request.data.get('polygon')
+        if not isinstance(polygon, list):
+            return Response({'error': 'polygon must be a list of {lat, lng} objects.'}, status=400)
+        area.polygon = polygon
 
-    area.polygon = polygon
+    if 'studio_name' in request.data:
+        area.studio_name = str(request.data.get('studio_name') or '').strip()[:200]
+    if 'studio_address' in request.data:
+        area.studio_address = str(request.data.get('studio_address') or '').strip()
+    if 'studio_lat' in request.data:
+        raw = request.data.get('studio_lat')
+        if raw is None or raw == '':
+            area.studio_lat = None
+        else:
+            try:
+                area.studio_lat = float(raw)
+            except (TypeError, ValueError):
+                return Response({'error': 'studio_lat must be a number.'}, status=400)
+    if 'studio_lng' in request.data:
+        raw = request.data.get('studio_lng')
+        if raw is None or raw == '':
+            area.studio_lng = None
+        else:
+            try:
+                area.studio_lng = float(raw)
+            except (TypeError, ValueError):
+                return Response({'error': 'studio_lng must be a number.'}, status=400)
+
     area.save()
-    return Response({'polygon': area.polygon, 'updated_at': area.updated_at})
+    return Response(payload())
 
 
 @api_view(['POST'])
@@ -309,6 +346,7 @@ def admin_bookings_list(request):
             'postcode': b.postcode,
             'phone': b.phone,
             'date': b.slot.date.isoformat() if b.slot else None,
+            'preferred_schedule': b.preferred_schedule or '',
             'status': b.status,
             'notes': b.notes,
             'access_instructions': b.access_instructions,
@@ -440,6 +478,7 @@ def admin_editing_list(request):
             'customer_name': _customer_display_name(e.customer),
             'style_notes': e.style_notes,
             'turnaround': e.turnaround,
+            'package': e.package or None,
             'status': e.status,
             'quoted_price': str(e.quoted_price) if e.quoted_price is not None else None,
             'file_count': e.files.count(),
@@ -558,192 +597,204 @@ def admin_editing_message(request, pk):
     return Response({'id': msg.id, 'body': msg.body, 'timestamp': msg.timestamp.isoformat()}, status=201)
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAdminUser])
-def admin_availability_list(request):
-    month = request.query_params.get('month')
-    if not month:
-        return Response({'error': 'month param required (YYYY-MM)'}, status=400)
-    try:
-        year, mon = month.split('-')
-        year, mon = int(year), int(mon)
-    except (ValueError, AttributeError):
-        return Response({'error': 'month must be YYYY-MM'}, status=400)
+def admin_calendar_events(request):
+    """Personal organisation calendar for Kay — not linked to customer bookings."""
+    if request.method == 'GET':
+        month = request.query_params.get('month')
+        qs = AdminCalendarEvent.objects.all()
+        if month:
+            try:
+                year, mon = month.split('-')
+                year, mon = int(year), int(mon)
+            except (ValueError, AttributeError):
+                return Response({'error': 'month must be YYYY-MM'}, status=400)
+            qs = qs.filter(date__year=year, date__month=mon)
+        return Response([_calendar_event_payload(e) for e in qs])
 
-    slots = AvailabilitySlot.objects.filter(date__year=year, date__month=mon)
-    return Response([{
-        'id': s.id,
-        'date': s.date.isoformat(),
-        'block': s.block,
-        'start_time': s.start_time.strftime('%H:%M'),
-        'end_time': s.end_time.strftime('%H:%M'),
-        'status': s.status,
-        'is_booked': s.is_booked,
-    } for s in slots])
+    title = request.data.get('title', '').strip()
+    date_str = request.data.get('date', '').strip()
+    notes = request.data.get('notes', '').strip()
+    start_time = request.data.get('start_time') or None
+    end_time = request.data.get('end_time') or None
 
-
-@api_view(['POST'])
-@permission_classes([IsAdminUser])
-def admin_availability_upsert(request):
-    date_str = request.data.get('date', '')
-    block    = request.data.get('block', '')
-    status   = request.data.get('status', '')
-
-    if not date_str or not block or not status:
-        return Response({'error': 'date, block, and status are required.'}, status=400)
-
-    valid_blocks   = [b[0] for b in AvailabilitySlot.BLOCK_CHOICES]
-    valid_statuses = [s[0] for s in AvailabilitySlot.STATUS_CHOICES]
-
-    if block not in valid_blocks:
-        return Response({'error': f'block must be one of {valid_blocks}.'}, status=400)
-    if status not in valid_statuses:
-        return Response({'error': f'status must be one of {valid_statuses}.'}, status=400)
+    if not title or not date_str:
+        return Response({'error': 'title and date are required.'}, status=400)
+    if len(title) > 200:
+        return Response({'error': 'title must be 200 characters or fewer.'}, status=400)
+    if len(notes) > 2000:
+        return Response({'error': 'notes must be 2000 characters or fewer.'}, status=400)
 
     try:
         date_obj = dt.date.fromisoformat(date_str)
     except ValueError:
         return Response({'error': 'date must be YYYY-MM-DD.'}, status=400)
 
-    slot, _ = AvailabilitySlot.objects.update_or_create(
-        date=date_obj, block=block,
-        defaults={'status': status},
+    try:
+        start_obj = dt.time.fromisoformat(start_time) if start_time else None
+        end_obj = dt.time.fromisoformat(end_time) if end_time else None
+    except ValueError:
+        return Response({'error': 'start_time and end_time must be HH:MM or HH:MM:SS.'}, status=400)
+
+    event = AdminCalendarEvent.objects.create(
+        title=title,
+        date=date_obj,
+        start_time=start_obj,
+        end_time=end_obj,
+        notes=notes,
     )
-    return Response({
-        'id': slot.id,
-        'date': slot.date.isoformat(),
-        'block': slot.block,
-        'start_time': slot.start_time.strftime('%H:%M'),
-        'end_time': slot.end_time.strftime('%H:%M'),
-        'status': slot.status,
-        'is_booked': slot.is_booked,
-    })
+    return Response(_calendar_event_payload(event), status=201)
+
+
+@api_view(['PATCH', 'DELETE'])
+@permission_classes([IsAdminUser])
+def admin_calendar_event_detail(request, pk):
+    try:
+        event = AdminCalendarEvent.objects.get(pk=pk)
+    except AdminCalendarEvent.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=404)
+
+    if request.method == 'DELETE':
+        event.delete()
+        return Response(status=204)
+
+    if 'title' in request.data:
+        title = str(request.data.get('title', '')).strip()
+        if not title:
+            return Response({'error': 'title cannot be empty.'}, status=400)
+        if len(title) > 200:
+            return Response({'error': 'title must be 200 characters or fewer.'}, status=400)
+        event.title = title
+
+    if 'date' in request.data:
+        try:
+            event.date = dt.date.fromisoformat(str(request.data.get('date', '')).strip())
+        except ValueError:
+            return Response({'error': 'date must be YYYY-MM-DD.'}, status=400)
+
+    if 'notes' in request.data:
+        notes = str(request.data.get('notes', '')).strip()
+        if len(notes) > 2000:
+            return Response({'error': 'notes must be 2000 characters or fewer.'}, status=400)
+        event.notes = notes
+
+    if 'start_time' in request.data:
+        raw = request.data.get('start_time')
+        if raw in (None, ''):
+            event.start_time = None
+        else:
+            try:
+                event.start_time = dt.time.fromisoformat(str(raw))
+            except ValueError:
+                return Response({'error': 'start_time must be HH:MM or HH:MM:SS.'}, status=400)
+
+    if 'end_time' in request.data:
+        raw = request.data.get('end_time')
+        if raw in (None, ''):
+            event.end_time = None
+        else:
+            try:
+                event.end_time = dt.time.fromisoformat(str(raw))
+            except ValueError:
+                return Response({'error': 'end_time must be HH:MM or HH:MM:SS.'}, status=400)
+
+    event.save()
+    return Response(_calendar_event_payload(event))
+
+
+def _calendar_event_payload(event: AdminCalendarEvent):
+    return {
+        'id': event.id,
+        'title': event.title,
+        'date': event.date.isoformat(),
+        'start_time': event.start_time.strftime('%H:%M') if event.start_time else None,
+        'end_time': event.end_time.strftime('%H:%M') if event.end_time else None,
+        'notes': event.notes,
+        'created_at': event.created_at.isoformat(),
+        'updated_at': event.updated_at.isoformat(),
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def admin_availability_list(request):
+    """Deprecated: availability calendar removed. Use /admin/calendar/."""
+    return Response({'error': 'Availability calendar has been replaced by the personal calendar.'}, status=410)
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def admin_availability_upsert(request):
+    return Response({'error': 'Availability calendar has been replaced by the personal calendar.'}, status=410)
 
 
 @api_view(['DELETE'])
 @permission_classes([IsAdminUser])
 def admin_availability_delete(request, pk):
-    try:
-        slot = AvailabilitySlot.objects.get(pk=pk)
-    except AvailabilitySlot.DoesNotExist:
-        return Response({'error': 'Not found.'}, status=404)
-
-    if slot.is_booked:
-        return Response({'error': 'Cannot delete a booked slot.'}, status=400)
-
-    slot.delete()
-    return Response(status=204)
+    return Response({'error': 'Availability calendar has been replaced by the personal calendar.'}, status=410)
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def customer_availability(request):
-    month = request.query_params.get('month')
-    if not month:
-        return Response({'error': 'month param required (YYYY-MM)'}, status=400)
-    try:
-        year, mon = month.split('-')
-        year, mon = int(year), int(mon)
-        if not (1 <= mon <= 12):
-            raise ValueError
-    except (ValueError, AttributeError):
-        return Response({'error': 'month must be YYYY-MM'}, status=400)
-
-    slots = AvailabilitySlot.objects.filter(
-        date__year=year, date__month=mon,
-    ).exclude(status='unavailable').order_by('date', 'block')
-
-    return Response([{
-        'id': s.id,
-        'date': s.date.isoformat(),
-        'block': s.block,
-        'start_time': s.start_time.strftime('%H:%M'),
-        'end_time': s.end_time.strftime('%H:%M'),
-        'status': s.status,
-        'is_booked': s.is_booked,
-    } for s in slots])
+    return Response(
+        {'error': 'Public availability calendar has been removed. Request a session and discuss timing via Messages.'},
+        status=410,
+    )
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_booking(request):
-    slot_id      = request.data.get('slot_id')
     session_type = request.data.get('session_type', '').strip()
-    address_line_1 = request.data.get('address_line_1', '').strip()
-    address_line_2 = request.data.get('address_line_2', '').strip()
-    # Back-compat: older clients may still send `location`
-    location = request.data.get('location', '').strip()
-    if address_line_1:
-        location = ', '.join(p for p in (address_line_1, address_line_2) if p)
-    postcode = request.data.get('postcode', '').strip()
     phone = request.data.get('phone', '').strip()
     notes = request.data.get('notes', '').strip()
-    access_instructions = request.data.get('access_instructions', '').strip()
+    preferred_schedule = request.data.get('preferred_schedule', '').strip()
 
-    if not slot_id or not session_type or not location or not postcode:
-        return Response(
-            {'error': 'slot_id, session_type, address_line_1 (or location), and postcode are required.'},
-            status=400
-        )
+    if not session_type:
+        return Response({'error': 'session_type is required.'}, status=400)
     if not phone:
         return Response({'error': 'phone is required.'}, status=400)
     if len(phone) > 30:
         return Response({'error': 'phone must be 30 characters or fewer.'}, status=400)
-    if len(access_instructions) > 1000:
-        return Response({'error': 'access_instructions must be 1000 characters or fewer.'}, status=400)
+    if len(preferred_schedule) > 1000:
+        return Response({'error': 'preferred_schedule must be 1000 characters or fewer.'}, status=400)
 
     valid_types = [s[0] for s in BookingRequest.SESSION_TYPES]
     if session_type not in valid_types:
         return Response({'error': f'session_type must be one of {valid_types}.'}, status=400)
 
-    is_home_visit = False
-    try:
-        lat, lng, _result = _geocode_postcode(postcode)
-        area = ServiceArea.get()
-        polygon = area.polygon if isinstance(area.polygon, list) else []
-        is_home_visit = _point_in_polygon(lat, lng, polygon) if polygon else False
-    except (ValueError, Exception):
-        pass
+    area = ServiceArea.get()
+    location = area.studio_location_label()
+    postcode = ''
 
-    with transaction.atomic():
-        try:
-            slot = AvailabilitySlot.objects.select_for_update().get(pk=slot_id)
-        except AvailabilitySlot.DoesNotExist:
-            return Response({'error': 'Slot not found.'}, status=404)
+    booking = BookingRequest.objects.create(
+        customer=request.user,
+        session_type=session_type,
+        location=location,
+        address_line_1=location,
+        address_line_2='',
+        postcode=postcode,
+        phone=phone,
+        is_home_visit=False,
+        notes=notes,
+        access_instructions='',
+        preferred_schedule=preferred_schedule,
+        status='pending',
+    )
 
-        if slot.is_booked:
-            return Response({'error': 'This slot has already been booked.'}, status=409)
-
-        if slot.status not in ('available', 'potential'):
-            return Response({'error': 'This slot is not available for booking.'}, status=409)
-
-        booking = BookingRequest.objects.create(
-            customer=request.user,
-            session_type=session_type,
-            location=location,
-            address_line_1=address_line_1 or location,
-            address_line_2=address_line_2,
-            postcode=postcode,
-            phone=phone,
-            is_home_visit=is_home_visit,
-            notes=notes,
-            access_instructions=access_instructions,
-            slot=slot,
-            status='pending',
-        )
-        slot.is_booked = True
-        slot.save()
-
-        # Seed thread so it appears in Messages before the first chat reply
-        Message.objects.create(
-            thread_type='booking',
-            thread_id=booking.id,
-            sender=request.user,
-            body=(
-                f'New booking request: {session_type} · {location} ({postcode}).'
-                + (f' Notes: {notes}' if notes else '')
-            ),
-        )
+    schedule_bit = f' Preferred timing: {preferred_schedule}.' if preferred_schedule else ''
+    Message.objects.create(
+        thread_type='booking',
+        thread_id=booking.id,
+        sender=request.user,
+        body=(
+            f'New booking request: {session_type} · Studio session ({location}).'
+            + schedule_bit
+            + (f' Notes: {notes}' if notes else '')
+        ),
+    )
 
     return Response({'id': booking.id, 'status': booking.status}, status=201)
 
@@ -751,23 +802,91 @@ def create_booking(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def create_editing_request(request):
+    from content.editing_packages import EDITING_PACKAGES, EDITING_TURNAROUND
+
     style_notes = request.data.get('style_notes', '').strip()
-    turnaround  = request.data.get('turnaround', '').strip()
+    package = request.data.get('package', '').strip()
 
-    if not style_notes or not turnaround:
-        return Response({'error': 'style_notes and turnaround are required.'}, status=400)
-
-    if len(turnaround) > 200:
-        return Response({'error': 'turnaround must be 200 characters or fewer.'}, status=400)
+    if not style_notes:
+        return Response({'error': 'style_notes is required.'}, status=400)
+    if package not in EDITING_PACKAGES:
+        return Response(
+            {'error': f'package is required. Must be one of: {list(EDITING_PACKAGES)}'},
+            status=400,
+        )
     if len(style_notes) > 2000:
         return Response({'error': 'style_notes must be 2000 characters or fewer.'}, status=400)
 
+    meta = EDITING_PACKAGES[package]
     editing = EditingRequest.objects.create(
         customer=request.user,
         style_notes=style_notes,
-        turnaround=turnaround,
+        turnaround=EDITING_TURNAROUND,
+        package=package,
+        quoted_price=meta['price'],
     )
-    return Response({'id': editing.id, 'status': editing.status}, status=201)
+    return Response({
+        'id': editing.id,
+        'status': editing.status,
+        'package': editing.package,
+        'quoted_price': str(editing.quoted_price),
+    }, status=201)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def editing_request_checkout(request, pk):
+    """Finalize an editing request: validate photo count against package and create Stripe checkout."""
+    from content.editing_packages import EDITING_PACKAGES, validate_package_count
+    from payments.services import create_checkout_for_editing
+    from content.emails import send_editing_payment_email
+
+    try:
+        editing = EditingRequest.objects.get(pk=pk, customer=request.user)
+    except EditingRequest.DoesNotExist:
+        return Response({'error': 'Not found.'}, status=404)
+
+    if not editing.package or editing.package not in EDITING_PACKAGES:
+        return Response({'error': 'Editing request has no valid package.'}, status=400)
+
+    existing = Payment.objects.filter(editing_request=editing).first()
+    if existing and existing.status == 'paid':
+        return Response({'error': 'Payment already completed.'}, status=400)
+
+    file_count = editing.files.count()
+    err = validate_package_count(editing.package, file_count)
+    if err:
+        return Response({'error': err}, status=400)
+
+    meta = EDITING_PACKAGES[editing.package]
+    editing.quoted_price = meta['price']
+    editing.status = 'confirmed'
+    editing.save()
+
+    payment = create_checkout_for_editing(editing)
+    if not payment:
+        return Response({'error': 'Could not create payment.'}, status=500)
+
+    if payment.payment_link_url:
+        send_editing_payment_email(editing, payment.payment_link_url)
+
+    Message.objects.create(
+        thread_type='editing',
+        thread_id=editing.id,
+        sender=request.user,
+        body=(
+            f'Editing package "{meta["label"]}" ({file_count} photos) — '
+            f'£{editing.quoted_price}. Payment link ready on your dashboard.'
+        ),
+    )
+
+    return Response({
+        'id': editing.id,
+        'status': editing.status,
+        'package': editing.package,
+        'quoted_price': str(editing.quoted_price),
+        'payment': _payment_summary(payment),
+    })
 
 
 @api_view(['POST'])
@@ -782,9 +901,12 @@ def upload_editing_file(request, pk):
     if not file:
         return Response({'error': 'file is required.'}, status=400)
 
-    MAX_FILES_PER_REQUEST = 50
-    if EditingFile.objects.filter(editing_request=editing).count() >= MAX_FILES_PER_REQUEST:
-        return Response({'error': f'Maximum {MAX_FILES_PER_REQUEST} files per request.'}, status=400)
+    from content.editing_packages import EDITING_PACKAGES
+    max_files = 20
+    if editing.package in EDITING_PACKAGES:
+        max_files = EDITING_PACKAGES[editing.package]['max_photos']
+    if EditingFile.objects.filter(editing_request=editing).count() >= max_files:
+        return Response({'error': f'Maximum {max_files} files for this package.'}, status=400)
 
     if file.size > UPLOAD_MAX_SIZE:
         return Response({'error': 'File exceeds 25 MB limit.'}, status=400)
@@ -837,11 +959,13 @@ def _system_message(thread_type, thread_id):
     else:
         try:
             req = BookingRequest.objects.get(pk=thread_id)
-            slot_date = req.slot.date.isoformat() if req.slot else 'TBC'
-            slot_block = req.slot.block if req.slot else ''
+            schedule = req.preferred_schedule.strip() if req.preferred_schedule else ''
+            if not schedule and req.slot:
+                schedule = f'{req.slot.date.isoformat()} {req.slot.block}'
+            schedule_bit = f' Preferred timing: {schedule}.' if schedule else ' Timing to be confirmed via Messages.'
             body = (
                 f"Booking Request #{req.id} — {req.session_type.capitalize()} at "
-                f"{req.location} ({req.postcode}). Date: {slot_date} {slot_block}."
+                f"{req.location} ({req.postcode}).{schedule_bit}"
             )
         except BookingRequest.DoesNotExist:
             body = f"Booking Request #{thread_id}"
@@ -1166,6 +1290,7 @@ def customer_dashboard(request):
             'is_home_visit': b.is_home_visit,
             'date': b.slot.date.isoformat() if b.slot else None,
             'block': b.slot.block if b.slot else None,
+            'preferred_schedule': b.preferred_schedule or '',
             'status': b.status,
             'notes': b.notes,
             'access_instructions': b.access_instructions,
@@ -1180,6 +1305,7 @@ def customer_dashboard(request):
             'id': e.id,
             'style_notes': e.style_notes[:80],
             'turnaround': e.turnaround,
+            'package': e.package or None,
             'status': e.status,
             'quoted_price': str(e.quoted_price) if e.quoted_price is not None else None,
             'created_at': e.created_at.isoformat(),

@@ -7,26 +7,21 @@ const FONT = "'Helvetica Neue', Arial, sans-serif";
 const STEPS = [
   {
     n: '01',
-    title: 'Choose a date & time',
-    body: 'Pick a preferred slot from Kay\'s availability calendar.',
+    title: 'Tell us about the session',
+    body: 'Share the session type, phone number, optional preferred timing, and what you want from the photoshoot.',
   },
   {
     n: '02',
-    title: 'Tell us about the session',
-    body: 'Share the session type, location, phone number, and any notes.',
+    title: 'Photolux Oxford reviews your request',
+    body: 'Within 48 hours we confirm details and prepare a personalised quote for a studio session.',
   },
   {
     n: '03',
-    title: 'Kay reviews your request',
-    body: 'Within 48 hours, Kay confirms availability and prepares a personalised quote.',
+    title: 'Agree the date in Messages',
+    body: 'Use Messages to lock in timing and refine the creative brief — no public calendar.',
   },
   {
     n: '04',
-    title: 'Chat if you need to',
-    body: 'Use Messages to refine details — location, timing, or creative brief.',
-  },
-  {
-    n: '05',
     title: 'Pay when the quote is ready',
     body: 'Once quoted, you’ll see a Pay button on your Bookings page to complete payment.',
   },
@@ -55,9 +50,9 @@ export function BookingIntroPage() {
         <p style={{
           fontSize: 15, lineHeight: 1.7, color: '#555', margin: '0 0 40px', maxWidth: 520,
         }}>
-          This isn’t an instant checkout. You submit a quote request, Kay reviews it,
-          and you’ll receive a price tailored to your session — based on type, location,
-          and duration.
+          This isn’t an instant checkout. You submit a quote request for a studio session,
+          Photolux Oxford reviews it, and you’ll receive a price tailored to your shoot —
+          based on type, duration, and creative brief.
         </p>
 
         <ol style={{ listStyle: 'none', padding: 0, margin: '0 0 40px' }}>
@@ -94,7 +89,7 @@ export function BookingIntroPage() {
           background: '#fff', border: '1px solid rgba(0,0,0,0.06)',
           padding: '16px 20px', marginBottom: 32, fontSize: 13, color: '#555', lineHeight: 1.6,
         }}>
-          Pricing is not fixed at this stage. After reviewing your request, Kay sends a quote —
+          Pricing is not fixed at this stage. After reviewing your request, Photolux Oxford sends a quote —
           you only pay once you’ve accepted it on your Bookings page.
         </div>
 

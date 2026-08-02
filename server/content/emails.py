@@ -1,53 +1,43 @@
-import logging
-
-from django.conf import settings
-from django.core.mail import send_mail
-
-logger = logging.getLogger(__name__)
+from backend.mail import send_app_email
 
 
 def send_booking_confirmation_email(booking, payment_url: str):
     subject = 'Your booking request has been confirmed — payment required'
     body = (
         f"Hi {booking.customer.first_name or booking.customer.email},\n\n"
-        f"Kay has confirmed your {booking.session_type} photography session.\n"
-        f"Location: {booking.location} ({booking.postcode})\n"
+        f"Photolux Oxford has confirmed your {booking.session_type} photography session.\n"
+        f"Location: Studio session"
     )
+    if booking.location:
+        body += f" ({booking.location})"
+    body += "\n"
     if booking.phone:
         body += f"Phone: {booking.phone}\n"
-    if booking.slot:
+    if booking.preferred_schedule:
+        body += f"Preferred timing: {booking.preferred_schedule}\n"
+    elif booking.slot:
         body += f"Date: {booking.slot.date} ({booking.slot.block})\n"
-    if booking.access_instructions:
-        body += f"Access instructions: {booking.access_instructions}\n"
+    if booking.notes:
+        body += f"Notes: {booking.notes}\n"
     body += f"\nPlease complete payment here:\n{payment_url}\n\n"
-    body += "Thank you,\nKay Tubillla Photography\n"
-    _send(booking.customer.email, subject, body)
+    body += "Thank you,\nPhotolux Oxford\n"
+    send_app_email(to_email=booking.customer.email, subject=subject, text_body=body)
 
 
 def send_editing_payment_email(editing, payment_url: str):
-    subject = 'Your editing request has been confirmed — payment required'
+    subject = 'Complete payment for your photo editing request'
+    package_line = ''
+    if editing.package:
+        package_line = f"Package: {editing.package}\n"
     body = (
         f"Hi {editing.customer.first_name or editing.customer.email},\n\n"
-        f"Kay has confirmed your editing request.\n"
-        f"Quoted price: £{editing.quoted_price}\n\n"
+        f"Thanks for submitting your photos for editing.\n"
+        f"{package_line}"
+        f"Amount due: £{editing.quoted_price}\n"
+        f"Turnaround: edited photos are returned by email within 1 week. "
+        f"If delivery takes longer, you are eligible for compensation.\n"
+        f"Editing does not book a calendar session slot.\n\n"
         f"Please complete payment here:\n{payment_url}\n\n"
-        f"Thank you,\nKay Tubillla Photography\n"
+        f"Thank you,\nPhotolux Oxford\n"
     )
-    _send(editing.customer.email, subject, body)
-
-
-def _send(to_email: str, subject: str, body: str):
-    if not to_email:
-        return
-    try:
-        send_mail(
-            subject,
-            body,
-            settings.DEFAULT_FROM_EMAIL,
-            [to_email],
-            fail_silently=False,
-        )
-    except Exception:
-        logger.exception('Failed to send email to %s — subject: %s', to_email, subject)
-        if settings.DEBUG:
-            logger.info('Email body:\n%s', body)
+    send_app_email(to_email=editing.customer.email, subject=subject, text_body=body)

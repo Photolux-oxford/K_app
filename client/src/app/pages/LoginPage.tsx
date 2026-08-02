@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Header } from '../components/Header';
 import { api } from '../lib/api';
 import type { AuthUser } from '../context/AuthContext';
 
@@ -49,6 +50,7 @@ export function LoginPage() {
     width: '100%', padding: '12px 14px',
     border: '1px solid #ddd', fontSize: 14,
     outline: 'none', fontFamily: 'inherit',
+    boxSizing: 'border-box',
   };
   const labelStyle: React.CSSProperties = {
     display: 'block', fontSize: 11,
@@ -57,10 +59,11 @@ export function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+    <div className="auth-page" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', paddingTop: 64 }}>
+      <Header />
       <div style={{ width: '100%', maxWidth: 400, padding: '48px 32px' }}>
         <h1 style={{ fontSize: 28, fontWeight: 300, letterSpacing: '-0.5px', marginBottom: 8 }}>Log in</h1>
-        <p style={{ color: '#888', fontSize: 13, marginBottom: 32 }}>Kay Tubillla Photography</p>
+        <p style={{ color: '#888', fontSize: 13, marginBottom: 32 }}>Photolux Oxford</p>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>

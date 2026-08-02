@@ -131,6 +131,10 @@ class BookingRequest(models.Model):
         AvailabilitySlot, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='booking'
     )
+    preferred_schedule = models.TextField(
+        blank=True, default='',
+        help_text='Customer preferred date/time notes (schedule agreed via messages).',
+    )
     notes = models.TextField(blank=True)
     access_instructions = models.TextField(blank=True)
     quoted_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
@@ -141,6 +145,23 @@ class BookingRequest(models.Model):
         return f"{self.customer.email} — {self.session_type} ({self.status})"
 
 
+class AdminCalendarEvent(models.Model):
+    """Photographer's private organisation calendar — not linked to bookings."""
+    title = models.CharField(max_length=200)
+    date = models.DateField()
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['date', 'start_time', 'id']
+
+    def __str__(self):
+        return f"{self.date} — {self.title}"
+
+
 class EditingRequest(models.Model):
     STATUS_CHOICES = [
         ('requested', 'Requested'),
@@ -149,9 +170,15 @@ class EditingRequest(models.Model):
         ('delivered', 'Delivered'),
         ('declined', 'Declined'),
     ]
+    PACKAGE_CHOICES = [
+        ('standard', 'Standard'),
+        ('plus', 'Plus'),
+        ('bundle', 'Bundle'),
+    ]
     customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='editing_requests')
     style_notes = models.TextField()
     turnaround = models.CharField(max_length=100)
+    package = models.CharField(max_length=20, choices=PACKAGE_CHOICES, blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='requested')
     quoted_price = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -217,9 +244,14 @@ class Message(models.Model):
 class ServiceArea(models.Model):
     """
     Singleton model. Always access via ServiceArea.get().
-    Stores Kay's home-visit zone as a list of {"lat": float, "lng": float} dicts.
+    Stores an optional future home-visit zone as a list of {"lat": float, "lng": float} dicts,
+    plus the current studio location shown to customers.
     """
     polygon = models.JSONField(default=list)
+    studio_name = models.CharField(max_length=200, blank=True, default='')
+    studio_address = models.TextField(blank=True, default='')
+    studio_lat = models.FloatField(null=True, blank=True)
+    studio_lng = models.FloatField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     @classmethod
@@ -229,3 +261,10 @@ class ServiceArea(models.Model):
 
     def __str__(self):
         return f"ServiceArea ({len(self.polygon)} points)"
+
+    def studio_location_label(self) -> str:
+        if self.studio_address.strip():
+            return self.studio_address.strip()
+        if self.studio_name.strip():
+            return self.studio_name.strip()
+        return 'Studio'

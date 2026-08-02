@@ -188,7 +188,11 @@ EMAIL_PORT = env.int('EMAIL_PORT', default=587)
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
+EMAIL_TIMEOUT = env.int('EMAIL_TIMEOUT', default=20)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='hello@kaytubillla.com')
+# Prefer Resend on Railway if Gmail SMTP hangs (outbound SMTP often blocked).
+RESEND_API_KEY = env('RESEND_API_KEY', default='')
+EMAIL_VERIFICATION_MINUTES = env.int('EMAIL_VERIFICATION_MINUTES', default=15)
 
 CORS_ALLOWED_ORIGINS = env.list(
     'CORS_ALLOWED_ORIGINS',

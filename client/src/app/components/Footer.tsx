@@ -17,7 +17,7 @@ export function Footer() {
           fontSize: 13, fontWeight: 500, letterSpacing: '0.1em',
           textTransform: 'uppercase',
         }}>
-          Kay Tubillla Photography
+          Photolux Oxford
         </span>
 
         <a
@@ -37,7 +37,7 @@ export function Footer() {
           fontSize: 11, color: 'rgba(255,255,255,0.4)',
           letterSpacing: '0.05em',
         }}>
-          © {new Date().getFullYear()} Kay Tubillla
+          © {new Date().getFullYear()} Photolux Oxford
         </span>
       </div>
     </footer>

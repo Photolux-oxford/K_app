@@ -19,7 +19,7 @@ const SERVICES = [
     number: '02',
     title: 'Photo Editing',
     description:
-      'Submit your own photos for professional post-processing. Colour grading, retouching, and style-matched editing delivered to your brief.',
+      'Submit your own photos for professional post-processing. Fixed packages from £5 — colour grading, retouching, and style-matched editing delivered by email within one week.',
     cta: 'Submit photos',
     href: '/editing',
     dark: true,

@@ -9,7 +9,7 @@ import { ServiceAreaEditor } from './components/admin/ServiceAreaEditor';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminBookings } from './pages/admin/AdminBookings';
 import { AdminEditing } from './pages/admin/AdminEditing';
-import { AdminAvailability } from './pages/admin/AdminAvailability';
+import { AdminCalendar } from './pages/admin/AdminCalendar';
 import { AdminPortfolio } from './pages/admin/AdminPortfolio';
 import { AdminMessages } from './pages/admin/AdminMessages';
 import { MessagesPage } from './pages/MessagesPage';
@@ -73,11 +73,12 @@ export default function App() {
                 <AdminBookings />
               </ProtectedRoute>
             } />
-            <Route path="/admin/availability" element={
+            <Route path="/admin/calendar" element={
               <ProtectedRoute requireStaff>
-                <AdminAvailability />
+                <AdminCalendar />
               </ProtectedRoute>
             } />
+            <Route path="/admin/availability" element={<Navigate to="/admin/calendar" replace />} />
             <Route path="/admin/editing" element={
               <ProtectedRoute requireStaff>
                 <AdminEditing />

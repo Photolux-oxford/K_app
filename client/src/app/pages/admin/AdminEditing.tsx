@@ -8,6 +8,7 @@ interface EditingRequest {
   customer_name?: string;
   style_notes: string;
   turnaround: string;
+  package: string | null;
   status: string;
   quoted_price: string | null;
   file_count: number;
@@ -188,13 +189,6 @@ export function AdminEditing() {
     patchRequest(r.id, { status: newStatus });
   };
 
-  const handlePriceBlur = (r: EditingRequest, value: string) => {
-    const trimmed = value.trim();
-    const current = r.quoted_price ?? '';
-    if (trimmed === current) return;
-    patchRequest(r.id, { quoted_price: trimmed === '' ? null : trimmed });
-  };
-
   return (
     <AdminLayout activeTab="editing">
       <div style={{ marginBottom: 32 }}>
@@ -241,7 +235,7 @@ export function AdminEditing() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                {['Customer', 'Style Notes', 'Turnaround', 'Files', 'Price (£)', 'Status', 'Actions'].map(col => (
+                {['Customer', 'Style Notes', 'Package', 'Files', 'Price (£)', 'Status', 'Actions'].map(col => (
                   <th key={col} style={{
                     padding: '12px 16px', textAlign: 'left',
                     fontSize: 10, fontWeight: 600, letterSpacing: '0.12em',
@@ -275,27 +269,14 @@ export function AdminEditing() {
                       {r.style_notes.length > 60 ? r.style_notes.slice(0, 60) + '…' : r.style_notes}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: 12, color: '#555', whiteSpace: 'nowrap' }}>
-                      {r.turnaround}
+                      {r.package || '—'}
+                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{r.turnaround}</div>
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: 12, color: '#888', textAlign: 'center' }}>
                       {r.file_count}
                     </td>
-                    <td style={{ padding: '14px 16px' }}>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        defaultValue={r.quoted_price ?? ''}
-                        placeholder="—"
-                        onBlur={e => handlePriceBlur(r, e.target.value)}
-                        style={{
-                          width: 72,
-                          border: 'none', borderBottom: '1px solid rgba(0,0,0,0.15)',
-                          padding: '4px 0', background: 'none',
-                          fontFamily: "'Helvetica Neue', Arial, sans-serif",
-                          fontSize: 12, color: '#111', outline: 'none',
-                        }}
-                      />
+                    <td style={{ padding: '14px 16px', fontSize: 12, color: '#111' }}>
+                      {r.quoted_price != null ? `£${r.quoted_price}` : '—'}
                     </td>
                     <td style={{ padding: '14px 16px' }}>
                       {canProgress ? (
