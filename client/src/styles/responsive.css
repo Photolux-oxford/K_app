@@ -3,6 +3,36 @@
    Uses !important to override inline styles set in React.
    ============================================================ */
 
+/*
+  Header visibility — do NOT use Tailwind `hidden` / `md:*` here.
+  Leaflet Geoman ships an unlayered `.hidden { display: none }` that
+  beats Tailwind v4 `@layer utilities` responsive overrides in production.
+*/
+.header-desktop-flex,
+.header-desktop-inline,
+.header-desktop-block {
+  display: none !important;
+}
+
+.header-mobile-only {
+  display: revert !important;
+}
+
+@media (min-width: 768px) {
+  .header-desktop-flex {
+    display: flex !important;
+  }
+  .header-desktop-inline {
+    display: inline !important;
+  }
+  .header-desktop-block {
+    display: block !important;
+  }
+  .header-mobile-only {
+    display: none !important;
+  }
+}
+
 /* --- Header mobile overlay (inline display:flex must not win on desktop) --- */
 @media (min-width: 769px) {
   .header-mobile-overlay {

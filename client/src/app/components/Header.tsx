@@ -190,7 +190,7 @@ export function Header() {
             minWidth: 44, zIndex: 1,
           }}>
             {!isHome && !menuOpen && <PageBackButton />}
-            <Link to="/" className="hidden md:inline" style={{ textDecoration: 'none' }}>
+            <Link to="/" className="header-desktop-inline" style={{ textDecoration: 'none' }}>
               <span style={{
                 fontFamily: FONT,
                 fontSize: 13, fontWeight: 500, letterSpacing: '0.12em',
@@ -204,7 +204,7 @@ export function Header() {
           {/* Center brand — mobile only */}
           <Link
             to="/"
-            className="md:hidden"
+            className="header-mobile-only"
             onClick={closeMenu}
             style={{
               textDecoration: 'none',
@@ -217,8 +217,8 @@ export function Header() {
             {brandMark}
           </Link>
 
-          {/* Center nav — desktop only (no inline display — Tailwind controls visibility) */}
-          <nav className="hidden md:flex" style={{ gap: 32 }}>
+          {/* Center nav — desktop only (visibility via responsive.css, not Tailwind `hidden`) */}
+          <nav className="header-desktop-flex" style={{ gap: 32 }}>
             {showAppNav ? (
               <>
                 <NavHoverLink to="/" muted>
@@ -292,12 +292,12 @@ export function Header() {
             minWidth: 44, justifyContent: 'flex-end', zIndex: 1,
           }}>
 
-            <Link to="/editing" className="hidden md:inline" style={desktopNavLinkStyle()}>
+            <Link to="/editing" className="header-desktop-inline" style={desktopNavLinkStyle()}>
               Editing
             </Link>
 
             {user?.is_staff && (
-              <Link to="/admin" className="hidden md:inline" style={{
+              <Link to="/admin" className="header-desktop-inline" style={{
                 ...desktopNavLinkStyle(),
                 fontWeight: 500,
                 color: '#888',
@@ -309,12 +309,12 @@ export function Header() {
               </Link>
             )}
 
-            <div className="hidden md:block" style={{ width: 1, height: 16, background: '#ddd' }} />
+            <div className="header-desktop-block" style={{ width: 1, height: 16, background: '#ddd' }} />
 
             {user ? (
               <button
                 onClick={handleLogout}
-                className="hidden md:inline"
+                className="header-desktop-inline"
                 style={{
                   padding: '8px 18px',
                   background: '#111', color: '#fff',
@@ -328,7 +328,7 @@ export function Header() {
               </button>
             ) : (
               <>
-                <Link to="/login" className="hidden md:inline" style={{
+                <Link to="/login" className="header-desktop-inline" style={{
                   padding: '7px 16px',
                   border: '1px solid #111', color: '#111',
                   fontFamily: FONT,
@@ -338,7 +338,7 @@ export function Header() {
                 }}>
                   Log In
                 </Link>
-                <Link to="/register" className="hidden md:inline" style={{
+                <Link to="/register" className="header-desktop-inline" style={{
                   padding: '8px 18px',
                   background: '#111', color: '#fff',
                   fontFamily: FONT,
@@ -350,11 +350,11 @@ export function Header() {
               </>
             )}
 
-            {/* Burger — mobile only; no inline display so md:hidden works */}
+            {/* Burger — mobile only */}
             <button
               type="button"
               onClick={() => setMenuOpen(prev => !prev)}
-              className="md:hidden header-burger"
+              className="header-mobile-only header-burger"
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={menuOpen}
               style={{

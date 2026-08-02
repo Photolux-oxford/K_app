@@ -1,5 +1,6 @@
-@import 'leaflet/dist/leaflet.css';
-@import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
+/* Layer third-party CSS so its `.hidden` (Geoman) cannot beat Tailwind `md:*` utilities. */
+@import 'leaflet/dist/leaflet.css' layer(components);
+@import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css' layer(components);
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
