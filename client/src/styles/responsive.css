@@ -7,6 +7,9 @@
   Header visibility — do NOT use Tailwind `hidden` / `md:*` here.
   Leaflet Geoman ships an unlayered `.hidden { display: none }` that
   beats Tailwind v4 `@layer utilities` responsive overrides in production.
+
+  Use inline-flex (not inline) so logo / CTAs / buttons share one baseline
+  inside the header flex row.
 */
 .header-desktop-flex,
 .header-desktop-inline,
@@ -15,18 +18,27 @@
 }
 
 .header-mobile-only {
-  display: revert !important;
+  display: none !important;
+}
+
+@media (max-width: 767.98px) {
+  .header-mobile-only {
+    display: inline-flex !important;
+    align-items: center !important;
+  }
 }
 
 @media (min-width: 768px) {
   .header-desktop-flex {
     display: flex !important;
+    align-items: center !important;
   }
-  .header-desktop-inline {
-    display: inline !important;
-  }
+  .header-desktop-inline,
   .header-desktop-block {
-    display: block !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
   }
   .header-mobile-only {
     display: none !important;

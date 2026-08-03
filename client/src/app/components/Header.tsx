@@ -38,6 +38,26 @@ const desktopMutedNavStyle = (active = false): CSSProperties => ({
   color: active ? '#111' : '#444',
 });
 
+/** Primary CTA chip for Bookings in the top nav. */
+const bookingsCtaStyle = (): CSSProperties => ({
+  fontFamily: FONT,
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  color: '#fff',
+  background: '#111',
+  textDecoration: 'none',
+  padding: '8px 18px',
+  border: 'none',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  lineHeight: 1,
+  flexShrink: 0,
+});
+
 function NavHoverLink({
   to,
   children,
@@ -218,15 +238,15 @@ export function Header() {
           </Link>
 
           {/* Center nav — desktop only (visibility via responsive.css, not Tailwind `hidden`) */}
-          <nav className="header-desktop-flex" style={{ gap: 32 }}>
+          <nav className="header-desktop-flex" style={{ gap: 28, alignItems: 'center' }}>
             {showAppNav ? (
               <>
                 <NavHoverLink to="/" muted>
                   Home
                 </NavHoverLink>
-                <NavHoverLink to="/dashboard" muted active={location.pathname === '/dashboard'}>
+                <Link to="/dashboard" style={bookingsCtaStyle()}>
                   Bookings
-                </NavHoverLink>
+                </Link>
                 <NavHoverLink to="/messages" muted active={location.pathname === '/messages'}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                     Messages
@@ -266,9 +286,9 @@ export function Header() {
                 </Link>
                 {showAccountLinks && (
                   <>
-                    <NavHoverLink to="/dashboard" muted active={location.pathname === '/dashboard'}>
+                    <Link to="/dashboard" style={bookingsCtaStyle()}>
                       Bookings
-                    </NavHoverLink>
+                    </Link>
                     <NavHoverLink to="/messages" muted active={location.pathname === '/messages'}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                         Messages
@@ -293,7 +313,7 @@ export function Header() {
           }}>
 
             <Link to="/editing" className="header-desktop-inline" style={desktopNavLinkStyle()}>
-              Editing
+              edit-photos
             </Link>
 
             {user?.is_staff && (
@@ -322,6 +342,7 @@ export function Header() {
                   fontFamily: FONT,
                   fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
                   textTransform: 'uppercase', cursor: 'pointer',
+                  lineHeight: 1,
                 }}
               >
                 Log Out
@@ -477,7 +498,7 @@ export function Header() {
               textTransform: 'uppercase', textDecoration: 'none',
             }}
           >
-            Submit for Editing
+            edit-photos
           </Link>
           {!user && (
             <>

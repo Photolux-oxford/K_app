@@ -37,7 +37,8 @@ export function LoginPage() {
       localStorage.setItem('access_token', tokens.access);
       const user = await api.get<AuthUser>('/auth/me/');
       login(tokens.access, tokens.refresh, user);
-      navigate(resolveNextPath(searchParams.get('next'), user.is_staff));
+      // Replace so the back button doesn't return to login / register.
+      navigate(resolveNextPath(searchParams.get('next'), user.is_staff), { replace: true });
     } catch {
       localStorage.removeItem('access_token');
       setError('Invalid email or password.');

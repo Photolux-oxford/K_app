@@ -68,7 +68,8 @@ export function RegisterPage() {
         code: code.trim(),
       });
       login(res.access, res.refresh, res.user);
-      navigate(res.user.is_staff ? '/admin' : '/dashboard');
+      // Replace so the back button doesn't return to the register / verify screen.
+      navigate(res.user.is_staff ? '/admin' : '/dashboard', { replace: true });
     } catch (err: unknown) {
       const e = err as { data?: { error?: string } };
       setError(e.data?.error ?? 'Verification failed. Please try again.');
@@ -237,7 +238,7 @@ export function RegisterPage() {
 
         <p style={{ fontSize: 13, color: '#888', marginTop: 24, textAlign: 'center' }}>
           Already have an account?{' '}
-          <Link to="/login" style={{ color: '#111', fontWeight: 600 }}>Log in</Link>
+          <Link to="/login" replace style={{ color: '#111', fontWeight: 600 }}>Log in</Link>
         </p>
       </div>
     </div>
