@@ -441,9 +441,6 @@ export function Header() {
               <Link to="/" onClick={closeMenu} style={overlayLinkStyle}>
                 Home
               </Link>
-              <Link to="/dashboard" onClick={closeMenu} style={overlayLinkStyle}>
-                Bookings
-              </Link>
               <Link
                 to="/messages"
                 onClick={closeMenu}
@@ -468,27 +465,25 @@ export function Header() {
                 Studio
               </Link>
               {showAccountLinks && (
-                <>
-                  <Link to="/dashboard" onClick={closeMenu} style={overlayLinkStyle}>
-                    Bookings
-                  </Link>
-                  <Link
-                    to="/messages"
-                    onClick={closeMenu}
-                    style={{ ...overlayLinkStyle, display: 'flex', alignItems: 'center', gap: 10 }}
-                  >
-                    Messages
-                    {messagesBadge}
-                  </Link>
-                </>
+                <Link
+                  to="/messages"
+                  onClick={closeMenu}
+                  style={{ ...overlayLinkStyle, display: 'flex', alignItems: 'center', gap: 10 }}
+                >
+                  Messages
+                  {messagesBadge}
+                </Link>
               )}
             </>
           )}
+          <Link to="/editing" onClick={closeMenu} style={overlayLinkStyle}>
+            edit-photos
+          </Link>
         </nav>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
           <Link
-            to="/editing"
+            to={user ? '/dashboard' : '/book'}
             onClick={closeMenu}
             style={{
               padding: '14px 40px',
@@ -498,7 +493,7 @@ export function Header() {
               textTransform: 'uppercase', textDecoration: 'none',
             }}
           >
-            edit-photos
+            Bookings
           </Link>
           {!user && (
             <>
