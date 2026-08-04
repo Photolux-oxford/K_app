@@ -15,9 +15,14 @@ export function ServiceAreaPage() {
           Studio location
         </h1>
         <div style={{ width: 40, height: 1, background: '#111', marginBottom: 20 }} />
-        <p style={{ fontSize: 14, color: '#666', lineHeight: 1.8, marginBottom: 40, maxWidth: 520 }}>
-          Photography sessions take place at the Photolux Oxford studio.
-          The pin on the map shows where to find us. Prefer to request a session?{' '}
+        <p style={{ fontSize: 14, color: '#666', lineHeight: 1.8, marginBottom: 16, maxWidth: 560 }}>
+          The Photolux studio is located two streets away from Oxford railway station.
+          Exact studio details are shared when you request a quote — we keep the
+          precise address off the public map for privacy.
+        </p>
+        <p style={{ fontSize: 14, color: '#666', lineHeight: 1.8, marginBottom: 40, maxWidth: 560 }}>
+          The pin below marks Oxford railway station as a convenient meeting-point
+          reference. Ready to book?{' '}
           <Link to="/book" style={{ color: '#111' }}>Start a booking request</Link>.
         </p>
 

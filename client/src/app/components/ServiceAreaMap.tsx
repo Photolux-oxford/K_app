@@ -15,7 +15,8 @@ L.Icon.Default.mergeOptions({
 
 type LatLngTuple = [number, number];
 
-const OXFORD_CENTER: LatLngTuple = [51.7520, -1.2577];
+/** Oxford railway station — public reference until admin sets a studio pin. */
+const OXFORD_STATION: LatLngTuple = [51.7537, -1.2701];
 
 interface StudioPayload {
   studio_name: string;
@@ -24,11 +25,11 @@ interface StudioPayload {
   studio_lng: number | null;
 }
 
-function Recenter({ center }: { center: LatLngTuple }) {
+function Recenter({ center, zoom }: { center: LatLngTuple; zoom: number }) {
   const map = useMap();
   useEffect(() => {
-    map.setView(center, 15);
-  }, [map, center]);
+    map.setView(center, zoom);
+  }, [map, center, zoom]);
   return null;
 }
 
@@ -48,10 +49,11 @@ export function ServiceAreaMap() {
       .finally(() => setLoading(false));
   }, []);
 
-  const hasPin = studio?.studio_lat != null && studio?.studio_lng != null;
-  const center: LatLngTuple = hasPin
+  const hasStudioPin = studio?.studio_lat != null && studio?.studio_lng != null;
+  const center: LatLngTuple = hasStudioPin
     ? [studio!.studio_lat!, studio!.studio_lng!]
-    : OXFORD_CENTER;
+    : OXFORD_STATION;
+  const zoom = hasStudioPin ? 15 : 15;
 
   return (
     <div style={{ position: 'relative' }}>
@@ -66,7 +68,7 @@ export function ServiceAreaMap() {
       )}
       <MapContainer
         center={center}
-        zoom={hasPin ? 15 : 12}
+        zoom={zoom}
         className="service-area-map"
         style={{ height: 480, width: '100%', borderRadius: 4 }}
         scrollWheelZoom={false}
@@ -76,11 +78,11 @@ export function ServiceAreaMap() {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {hasPin && (
-          <>
-            <Recenter center={center} />
-            <Marker position={center}>
-              <Popup>
+        <Recenter center={center} zoom={zoom} />
+        <Marker position={center}>
+          <Popup>
+            {hasStudioPin ? (
+              <>
                 <strong>{studio!.studio_name || 'Photolux Oxford Studio'}</strong>
                 {studio!.studio_address && (
                   <>
@@ -88,16 +90,22 @@ export function ServiceAreaMap() {
                     {studio!.studio_address}
                   </>
                 )}
-              </Popup>
-            </Marker>
-          </>
-        )}
+              </>
+            ) : (
+              <>
+                <strong>Oxford railway station</strong>
+                <br />
+                Photolux studio is two streets away — exact details after you request a quote.
+              </>
+            )}
+          </Popup>
+        </Marker>
       </MapContainer>
 
       <div style={{ marginTop: 12, fontSize: 12, color: '#777', lineHeight: 1.5 }}>
-        {hasPin
+        {hasStudioPin
           ? (studio!.studio_address || studio!.studio_name || 'Photolux Oxford studio location')
-          : 'Studio location coming soon — check back shortly.'}
+          : 'Map pin: Oxford railway station (studio is nearby — full address on quote).'}
       </div>
     </div>
   );
