@@ -233,12 +233,18 @@ if env('AWS_STORAGE_BUCKET_NAME', default=''):
     AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='eu-west-2')
     AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='')
     AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='')
-    AWS_S3_CUSTOM_DOMAIN = env('AWS_S3_CUSTOM_DOMAIN', default='')
-    AWS_S3_ENDPOINT_URL = env('AWS_S3_ENDPOINT_URL', default='')  # Cloudflare R2, etc.
     # Many new buckets block ACLs — leave unset/public via bucket policy instead.
     AWS_DEFAULT_ACL = None
     AWS_QUERYSTRING_AUTH = False
     AWS_S3_FILE_OVERWRITE = False
+    # Only set these when non-empty. An empty AWS_S3_ENDPOINT_URL makes boto3 raise
+    # ValueError: Invalid endpoint:  (breaks portfolio uploads on normal AWS S3).
+    _s3_custom_domain = env('AWS_S3_CUSTOM_DOMAIN', default='').strip()
+    _s3_endpoint_url = env('AWS_S3_ENDPOINT_URL', default='').strip()
+    if _s3_custom_domain:
+        AWS_S3_CUSTOM_DOMAIN = _s3_custom_domain
+    if _s3_endpoint_url:
+        AWS_S3_ENDPOINT_URL = _s3_endpoint_url
     STORAGES = {
         'default': {
             'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
@@ -247,10 +253,10 @@ if env('AWS_STORAGE_BUCKET_NAME', default=''):
             'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
         },
     }
-    if AWS_S3_CUSTOM_DOMAIN:
-        MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/'
-    elif AWS_S3_ENDPOINT_URL:
-        MEDIA_URL = f'{AWS_S3_ENDPOINT_URL.rstrip("/")}/{AWS_STORAGE_BUCKET_NAME}/'
+    if _s3_custom_domain:
+        MEDIA_URL = f'https://{_s3_custom_domain}/'
+    elif _s3_endpoint_url:
+        MEDIA_URL = f'{_s3_endpoint_url.rstrip("/")}/{AWS_STORAGE_BUCKET_NAME}/'
     else:
         MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/'
     USE_LOCAL_MEDIA = False

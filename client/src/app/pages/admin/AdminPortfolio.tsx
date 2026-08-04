@@ -9,6 +9,7 @@ import {
   type AdminPortfolioItem,
 } from '../../components/admin/portfolioPreviewUtils';
 import { api, apiPostForm } from '../../lib/api';
+import { preparePortfolioImage } from '../../lib/preparePortfolioImage';
 
 type SubTab = 'library' | 'grid' | 'hero' | 'categories' | 'preview';
 
@@ -170,8 +171,9 @@ function LibraryTab({ items, categories, slots, loadAll, draftItem, setDraftItem
     setUploading(true);
     try {
       for (const { file } of pendingFiles) {
+        const prepared = await preparePortfolioImage(file);
         const fd = new FormData();
-        fd.append('image', file);
+        fd.append('image', prepared);
         await apiPostForm('/admin/portfolio/items/', fd);
       }
       pendingFiles.forEach(p => URL.revokeObjectURL(p.url));
@@ -228,7 +230,7 @@ function LibraryTab({ items, categories, slots, loadAll, draftItem, setDraftItem
             e.target.value = '';
           }}
         />
-        {uploading ? 'Uploading…' : 'Drop or click to choose photos — you will preview before uploading'}
+        {uploading ? 'Uploading…' : 'Drop or click to choose photos — optimized for web at full display quality'}
       </label>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>

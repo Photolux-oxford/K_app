@@ -1,8 +1,11 @@
 import os
+from io import BytesIO
 
+from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.db.models import Count, Q
 from django.utils.text import slugify
 from django.views.decorators.cache import never_cache
+from PIL import Image, ImageOps
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
@@ -11,6 +14,74 @@ from .models import Category, HeroSlot, PortfolioItem
 
 PORTFOLIO_MAX_SIZE = 25 * 1024 * 1024
 PORTFOLIO_ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif'}
+# Longest edge for on-site display (4K / retina hero). Quality 92 ≈ pristine on screen.
+PORTFOLIO_MAX_LONG_EDGE = 4000
+PORTFOLIO_JPEG_QUALITY = 92
+
+
+def _prepare_portfolio_upload(uploaded):
+    """
+    Normalize portfolio images for web: EXIF-orient, cap long edge, high-quality JPEG.
+    Skips re-encode when already a suitable JPEG under the size cap.
+    """
+    try:
+        uploaded.seek(0)
+        with Image.open(uploaded) as img:
+            img = ImageOps.exif_transpose(img)
+            width, height = img.size
+            long_edge = max(width, height)
+            name = getattr(uploaded, 'name', 'portfolio.jpg') or 'portfolio.jpg'
+            ext = os.path.splitext(name)[1].lower()
+            is_jpeg = ext in {'.jpg', '.jpeg'} or (img.format or '').upper() == 'JPEG'
+            size = getattr(uploaded, 'size', None)
+
+            if (
+                is_jpeg
+                and long_edge <= PORTFOLIO_MAX_LONG_EDGE
+                and size is not None
+                and size <= 3.5 * 1024 * 1024
+            ):
+                uploaded.seek(0)
+                return uploaded
+
+            if long_edge > PORTFOLIO_MAX_LONG_EDGE:
+                scale = PORTFOLIO_MAX_LONG_EDGE / long_edge
+                new_size = (
+                    max(1, round(width * scale)),
+                    max(1, round(height * scale)),
+                )
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+            if img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            elif img.mode == 'L':
+                img = img.convert('RGB')
+
+            buffer = BytesIO()
+            img.save(
+                buffer,
+                format='JPEG',
+                quality=PORTFOLIO_JPEG_QUALITY,
+                optimize=True,
+                progressive=True,
+            )
+            buffer.seek(0)
+            base = os.path.splitext(os.path.basename(name))[0] or 'portfolio'
+            out_name = f'{base}.jpg'
+            return InMemoryUploadedFile(
+                buffer,
+                field_name='image',
+                name=out_name,
+                content_type='image/jpeg',
+                size=buffer.getbuffer().nbytes,
+                charset=None,
+            )
+    except Exception:
+        try:
+            uploaded.seek(0)
+        except Exception:
+            pass
+        return uploaded
 
 
 def _image_url(request, item):
@@ -189,9 +260,11 @@ def admin_portfolio_items(request):
     if image.size > PORTFOLIO_MAX_SIZE:
         return Response({'error': 'File exceeds 25 MB limit.'}, status=400)
 
+    image = _prepare_portfolio_upload(image)
+
     title = request.data.get('title', '').strip()
     if not title:
-        title = os.path.splitext(image.name)[0]
+        title = os.path.splitext(getattr(image, 'name', 'portfolio.jpg') or 'portfolio.jpg')[0]
 
     category_id = request.data.get('category')
     category = None
