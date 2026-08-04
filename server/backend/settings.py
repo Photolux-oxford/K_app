@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import timedelta
 import environ
 import os
+from django.core.exceptions import ImproperlyConfigured
 
 
 env = environ.Env(
@@ -228,15 +229,33 @@ if not DEBUG:
 
 # Optional S3 / R2 object storage (recommended for portfolio photos on Railway)
 if env('AWS_STORAGE_BUCKET_NAME', default=''):
+    import re
+
     INSTALLED_APPS += ['storages']
-    AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME')
-    AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='eu-west-2')
+    AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME').strip()
+    # Must be a region id like eu-west-2 — NOT an AZ (eu-west-2a) or typo (eu-west-2-an).
+    _raw_region = env('AWS_S3_REGION_NAME', default='eu-west-2').strip()
+    _region_match = re.match(r'^([a-z]{2}-[a-z]+-\d+)', _raw_region)
+    AWS_S3_REGION_NAME = _region_match.group(1) if _region_match else _raw_region
+    if AWS_S3_REGION_NAME != _raw_region:
+        import logging
+        logging.getLogger(__name__).warning(
+            'AWS_S3_REGION_NAME=%r normalized to %r (use the region id, e.g. eu-west-2)',
+            _raw_region,
+            AWS_S3_REGION_NAME,
+        )
+    if AWS_STORAGE_BUCKET_NAME.startswith('arn:') or '/' in AWS_STORAGE_BUCKET_NAME:
+        raise ImproperlyConfigured(
+            'AWS_STORAGE_BUCKET_NAME must be the short bucket name only '
+            '(e.g. photolux-oxford-media), not an ARN or URL.'
+        )
     AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='')
     AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='')
     # Many new buckets block ACLs — leave unset/public via bucket policy instead.
     AWS_DEFAULT_ACL = None
     AWS_QUERYSTRING_AUTH = False
     AWS_S3_FILE_OVERWRITE = False
+    AWS_S3_ADDRESSING_STYLE = 'virtual'
     # Only set these when non-empty. An empty AWS_S3_ENDPOINT_URL makes boto3 raise
     # ValueError: Invalid endpoint:  (breaks portfolio uploads on normal AWS S3).
     _s3_custom_domain = env('AWS_S3_CUSTOM_DOMAIN', default='').strip()
