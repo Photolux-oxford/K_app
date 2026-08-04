@@ -2,6 +2,7 @@ import { useState, FormEvent, ChangeEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { api } from '../lib/api';
 import type { AuthUser } from '../context/AuthContext';
 
@@ -96,6 +97,21 @@ export function RegisterPage() {
     }
   };
 
+  const handleGoogle = async (credential: string) => {
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api.post<AuthTokensResponse>('/auth/google/', { credential });
+      login(res.access, res.refresh, res.user);
+      navigate(res.user.is_staff ? '/admin' : '/dashboard', { replace: true });
+    } catch (err: unknown) {
+      const e = err as { data?: { error?: string } };
+      setError(e.data?.error ?? 'Google sign-in failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '12px 14px',
     border: '1px solid #ddd', fontSize: 14,
@@ -152,6 +168,8 @@ export function RegisterPage() {
                 {loading ? 'Sending code…' : 'Continue'}
               </button>
             </form>
+
+            <GoogleSignInButton onCredential={handleGoogle} disabled={loading} />
           </>
         ) : (
           <>

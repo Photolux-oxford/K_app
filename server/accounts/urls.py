@@ -8,5 +8,6 @@ urlpatterns = [
     path('resend-verification/', views.resend_verification),
     path('token/', TokenObtainPairView.as_view()),
     path('token/refresh/', TokenRefreshView.as_view()),
+    path('google/', views.google_login),
     path('me/', views.me),
 ]

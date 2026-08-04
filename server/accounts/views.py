@@ -187,6 +187,70 @@ def resend_verification(request):
     return Response(payload)
 
 
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def google_login(request):
+    """Exchange a Google Identity Services ID token for app JWTs."""
+    client_id = getattr(settings, 'GOOGLE_CLIENT_ID', '') or ''
+    if not client_id:
+        return Response({'error': 'Google login is not configured.'}, status=503)
+
+    credential = (request.data.get('credential') or '').strip()
+    if not credential:
+        return Response({'error': 'Missing Google credential.'}, status=400)
+
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token
+        info = id_token.verify_oauth2_token(
+            credential,
+            google_requests.Request(),
+            client_id,
+        )
+    except Exception:
+        return Response({'error': 'Invalid Google token.'}, status=400)
+
+    email = str(info.get('email') or '').strip().lower()
+    if not email:
+        return Response({'error': 'Google account has no email.'}, status=400)
+    if not info.get('email_verified'):
+        return Response({'error': 'Google account email is not verified.'}, status=400)
+
+    first_name = str(info.get('given_name') or '').strip()[:150]
+    last_name = str(info.get('family_name') or '').strip()[:150]
+
+    user = User.objects.filter(username=email).first()
+    if user:
+        changed = []
+        if not user.is_active:
+            user.is_active = True
+            changed.append('is_active')
+            EmailVerification.objects.filter(user=user).delete()
+        if first_name and not user.first_name:
+            user.first_name = first_name
+            changed.append('first_name')
+        if last_name and not user.last_name:
+            user.last_name = last_name
+            changed.append('last_name')
+        if user.email != email:
+            user.email = email
+            changed.append('email')
+        if changed:
+            user.save(update_fields=changed)
+    else:
+        user = User(
+            username=email,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            is_active=True,
+        )
+        user.set_unusable_password()
+        user.save()
+
+    return Response(_tokens_for(user), status=200)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def me(request):

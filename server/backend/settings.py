@@ -194,6 +194,10 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='hello@kaytubillla.com')
 RESEND_API_KEY = env('RESEND_API_KEY', default='')
 EMAIL_VERIFICATION_MINUTES = env.int('EMAIL_VERIFICATION_MINUTES', default=15)
 
+# Google Sign-In (ID token audience). Client secret not required for GIS button flow.
+GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
+GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default='')
+
 CORS_ALLOWED_ORIGINS = env.list(
     'CORS_ALLOWED_ORIGINS',
     default=['http://localhost:5173', 'http://localhost:3000'],

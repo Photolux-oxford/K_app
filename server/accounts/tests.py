@@ -146,3 +146,68 @@ class MeTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data['email'], 'me@example.com')
         self.assertEqual(res.data['first_name'], 'Kay')
+
+
+@override_settings(GOOGLE_CLIENT_ID='test-google-client-id.apps.googleusercontent.com')
+class GoogleLoginTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_google_not_configured_returns_503(self):
+        with override_settings(GOOGLE_CLIENT_ID=''):
+            res = self.client.post('/api/auth/google/', {
+                'credential': 'fake-token',
+            }, format='json')
+        self.assertEqual(res.status_code, 503)
+
+    def test_google_missing_credential_returns_400(self):
+        res = self.client.post('/api/auth/google/', {}, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    @patch('google.oauth2.id_token.verify_oauth2_token')
+    def test_google_creates_new_user(self, mock_verify):
+        mock_verify.return_value = {
+            'email': 'google.user@example.com',
+            'email_verified': True,
+            'given_name': 'Gigi',
+            'family_name': 'User',
+        }
+        res = self.client.post('/api/auth/google/', {
+            'credential': 'valid-google-id-token',
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertIn('access', res.data)
+        self.assertIn('refresh', res.data)
+        self.assertEqual(res.data['user']['email'], 'google.user@example.com')
+        user = User.objects.get(username='google.user@example.com')
+        self.assertTrue(user.is_active)
+        self.assertFalse(user.has_usable_password())
+
+    @patch('google.oauth2.id_token.verify_oauth2_token')
+    def test_google_activates_pending_email_user(self, mock_verify):
+        user = User.objects.create_user(
+            username='pending@example.com',
+            email='pending@example.com',
+            password='temp12345',
+            is_active=False,
+        )
+        EmailVerification.objects.create(user=user, code='123456')
+        mock_verify.return_value = {
+            'email': 'pending@example.com',
+            'email_verified': True,
+            'given_name': 'Pending',
+        }
+        res = self.client.post('/api/auth/google/', {
+            'credential': 'valid-google-id-token',
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+        self.assertFalse(EmailVerification.objects.filter(user=user).exists())
+
+    @patch('google.oauth2.id_token.verify_oauth2_token', side_effect=ValueError('bad'))
+    def test_google_invalid_token_returns_400(self, _mock_verify):
+        res = self.client.post('/api/auth/google/', {
+            'credential': 'bad-token',
+        }, format='json')
+        self.assertEqual(res.status_code, 400)

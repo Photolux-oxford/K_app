@@ -2,6 +2,7 @@ import { useState, FormEvent } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { api } from '../lib/api';
 import type { AuthUser } from '../context/AuthContext';
 
@@ -15,6 +16,12 @@ function resolveNextPath(raw: string | null, isStaff: boolean): string {
   return decoded;
 }
 
+interface GoogleAuthResponse {
+  access: string;
+  refresh: string;
+  user: AuthUser;
+}
+
 export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,6 +30,11 @@ export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const finishAuth = (access: string, refresh: string, user: AuthUser) => {
+    login(access, refresh, user);
+    navigate(resolveNextPath(searchParams.get('next'), user.is_staff), { replace: true });
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,15 +45,26 @@ export function LoginPage() {
         '/auth/token/',
         { username: email, password }
       );
-      // Temporarily set token so the /me call is authenticated
       localStorage.setItem('access_token', tokens.access);
       const user = await api.get<AuthUser>('/auth/me/');
-      login(tokens.access, tokens.refresh, user);
-      // Replace so the back button doesn't return to login / register.
-      navigate(resolveNextPath(searchParams.get('next'), user.is_staff), { replace: true });
+      finishAuth(tokens.access, tokens.refresh, user);
     } catch {
       localStorage.removeItem('access_token');
       setError('Invalid email or password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogle = async (credential: string) => {
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api.post<GoogleAuthResponse>('/auth/google/', { credential });
+      finishAuth(res.access, res.refresh, res.user);
+    } catch (err: unknown) {
+      const e = err as { data?: { error?: string } };
+      setError(e.data?.error ?? 'Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -98,6 +121,8 @@ export function LoginPage() {
             {loading ? 'Logging in…' : 'Log In'}
           </button>
         </form>
+
+        <GoogleSignInButton onCredential={handleGoogle} disabled={loading} />
 
         <p style={{ fontSize: 13, color: '#888', marginTop: 24, textAlign: 'center' }}>
           No account?{' '}
