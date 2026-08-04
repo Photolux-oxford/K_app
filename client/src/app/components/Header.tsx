@@ -38,7 +38,7 @@ const desktopMutedNavStyle = (active = false): CSSProperties => ({
   color: active ? '#111' : '#444',
 });
 
-/** Primary CTA chip for Bookings in the top nav. */
+/** Primary CTA chip for My Bookings in the top nav. */
 const bookingsCtaStyle = (): CSSProperties => ({
   fontFamily: FONT,
   fontSize: 11,
@@ -113,9 +113,9 @@ export function Header() {
   const isAppPage = APP_PATHS.some(
     p => location.pathname === p || location.pathname.startsWith(`${p}/`)
   );
-  /** Logged-in account shell (Home / Bookings / Messages) on app pages. */
+  /** Logged-in account shell (Home / Request a Session / My Bookings / Messages) on app pages. */
   const showAppNav = !!user && isAppPage;
-  /** On marketing pages, show Bookings + Messages for any logged-in user. */
+  /** On marketing pages, show My Bookings + Messages for any logged-in user. */
   const showAccountLinks = !!user && !showAppNav;
 
   const scrollTo = (id: string) =>
@@ -244,8 +244,11 @@ export function Header() {
                 <NavHoverLink to="/" muted>
                   Home
                 </NavHoverLink>
+                <NavHoverLink to="/book" muted active={location.pathname === '/book'}>
+                  Request a Session
+                </NavHoverLink>
                 <Link to="/dashboard" style={bookingsCtaStyle()}>
-                  Bookings
+                  My Bookings
                 </Link>
                 <NavHoverLink to="/messages" muted active={location.pathname === '/messages'}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
@@ -284,10 +287,13 @@ export function Header() {
                 >
                   Studio
                 </Link>
+                <NavHoverLink to="/book" muted active={location.pathname === '/book'}>
+                  Request a Session
+                </NavHoverLink>
                 {showAccountLinks && (
                   <>
                     <Link to="/dashboard" style={bookingsCtaStyle()}>
-                      Bookings
+                      My Bookings
                     </Link>
                     <NavHoverLink to="/messages" muted active={location.pathname === '/messages'}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
@@ -483,7 +489,7 @@ export function Header() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
           <Link
-            to={user ? '/dashboard' : '/book'}
+            to="/book"
             onClick={closeMenu}
             style={{
               padding: '14px 40px',
@@ -493,8 +499,22 @@ export function Header() {
               textTransform: 'uppercase', textDecoration: 'none',
             }}
           >
-            Bookings
+            Request a Session
           </Link>
+          {user && (
+            <Link
+              to="/dashboard"
+              onClick={closeMenu}
+              style={{
+                padding: '12px 40px',
+                border: '1px solid #111', color: '#111',
+                fontSize: 11, fontWeight: 600, letterSpacing: '0.15em',
+                textTransform: 'uppercase', textDecoration: 'none',
+              }}
+            >
+              My Bookings
+            </Link>
+          )}
           {!user && (
             <>
               <Link
