@@ -1,11 +1,25 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve
 
 urlpatterns = [
     path('django-admin/', admin.site.urls),
     path('api/auth/', include('accounts.urls')),
     path('api/payments/', include('payments.urls')),
     path('api/', include('content.urls')),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+]
+
+# django.conf.urls.static.static() only registers routes when DEBUG=True.
+# Production on Railway still needs /media/ when using a local disk volume.
+if getattr(settings, 'USE_LOCAL_MEDIA', True):
+    urlpatterns += [
+        re_path(
+            r'^media/(?P<path>.*)$',
+            serve,
+            {'document_root': settings.MEDIA_ROOT},
+        ),
+    ]
+elif settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

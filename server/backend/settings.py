@@ -75,8 +75,12 @@ SIMPLE_JWT = {
 }
 
 # --- Media files (portfolio images, editing uploads) ---
+# On Railway: attach a Volume to K_app mounted at /app/media (or set MEDIA_ROOT),
+# otherwise uploads disappear on every deploy. Prefer S3/R2 for production photos.
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path(env('MEDIA_ROOT', default=str(BASE_DIR / 'media')))
+# True when using local disk (volume or ephemeral). False when using S3/R2.
+USE_LOCAL_MEDIA = True
 
 # --- Consistent primary key type ---
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -222,21 +226,34 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Optional S3 media storage
+# Optional S3 / R2 object storage (recommended for portfolio photos on Railway)
 if env('AWS_STORAGE_BUCKET_NAME', default=''):
     INSTALLED_APPS += ['storages']
-    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
     AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME')
     AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='eu-west-2')
     AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='')
     AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='')
     AWS_S3_CUSTOM_DOMAIN = env('AWS_S3_CUSTOM_DOMAIN', default='')
-    AWS_DEFAULT_ACL = 'public-read'
+    AWS_S3_ENDPOINT_URL = env('AWS_S3_ENDPOINT_URL', default='')  # Cloudflare R2, etc.
+    # Many new buckets block ACLs — leave unset/public via bucket policy instead.
+    AWS_DEFAULT_ACL = None
     AWS_QUERYSTRING_AUTH = False
+    AWS_S3_FILE_OVERWRITE = False
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+        },
+        'staticfiles': {
+            'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
+        },
+    }
     if AWS_S3_CUSTOM_DOMAIN:
         MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/'
+    elif AWS_S3_ENDPOINT_URL:
+        MEDIA_URL = f'{AWS_S3_ENDPOINT_URL.rstrip("/")}/{AWS_STORAGE_BUCKET_NAME}/'
     else:
-        MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/'
+        MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/'
+    USE_LOCAL_MEDIA = False
 
 # --- Django Channels ---
 ASGI_APPLICATION = 'backend.asgi.application'

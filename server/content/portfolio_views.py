@@ -14,9 +14,12 @@ PORTFOLIO_ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif'}
 
 
 def _image_url(request, item):
-    if item.image:
-        return request.build_absolute_uri(item.image.url)
-    return None
+    if not item.image:
+        return None
+    url = item.image.url
+    if url.startswith('http://') or url.startswith('https://'):
+        return url
+    return request.build_absolute_uri(url)
 
 
 def _serialize_item(request, item):
