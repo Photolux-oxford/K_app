@@ -19,9 +19,9 @@ const FONT = "'Helvetica Neue', Arial, sans-serif";
 
 const desktopNavLinkStyle = (active = false): CSSProperties => ({
   fontFamily: FONT,
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: active ? 600 : 400,
-  letterSpacing: '0.08em',
+  letterSpacing: '0.06em',
   textTransform: 'uppercase',
   color: '#111',
   textDecoration: 'none',
@@ -30,6 +30,8 @@ const desktopNavLinkStyle = (active = false): CSSProperties => ({
   padding: 0,
   cursor: 'pointer',
   transition: 'color 0.2s',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
 });
 
 const desktopMutedNavStyle = (active = false): CSSProperties => ({
@@ -41,14 +43,14 @@ const desktopMutedNavStyle = (active = false): CSSProperties => ({
 /** Primary CTA chip for My Bookings in the top nav. */
 const bookingsCtaStyle = (): CSSProperties => ({
   fontFamily: FONT,
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 500,
-  letterSpacing: '0.1em',
+  letterSpacing: '0.08em',
   textTransform: 'uppercase',
   color: '#fff',
   background: '#111',
   textDecoration: 'none',
-  padding: '8px 18px',
+  padding: '7px 12px',
   border: 'none',
   cursor: 'pointer',
   display: 'inline-flex',
@@ -56,7 +58,24 @@ const bookingsCtaStyle = (): CSSProperties => ({
   justifyContent: 'center',
   lineHeight: 1,
   flexShrink: 0,
+  whiteSpace: 'nowrap',
 });
+
+/** Two-line label so "Request a Session" never stacks as three words. */
+const requestSessionLabel = (
+  <span
+    style={{
+      display: 'inline-flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      lineHeight: 1.15,
+      textAlign: 'center',
+    }}
+  >
+    <span>Request a</span>
+    <span>Session</span>
+  </span>
+);
 
 function NavHoverLink({
   to,
@@ -197,24 +216,28 @@ export function Header() {
         borderBottom: '1px solid rgba(0,0,0,0.06)',
       }}>
         <div style={{
-          maxWidth: 1200, margin: '0 auto',
-          padding: '0 20px',
+          width: '100%',
+          margin: '0 auto',
+          padding: '0 clamp(16px, 2.5vw, 40px)',
           height: 64,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'clamp(12px, 1.5vw, 28px)',
           position: 'relative',
         }}>
 
           {/* Left: back (non-home, menu closed) + desktop logo */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 14,
-            minWidth: 44, zIndex: 1,
+            flexShrink: 0, zIndex: 1,
           }}>
             {!isHome && !menuOpen && <PageBackButton />}
-            <Link to="/" className="header-desktop-inline" style={{ textDecoration: 'none' }}>
+            <Link to="/" className="header-desktop-inline" style={{ textDecoration: 'none', flexShrink: 0 }}>
               <span style={{
                 fontFamily: FONT,
-                fontSize: 13, fontWeight: 500, letterSpacing: '0.12em',
+                fontSize: 12, fontWeight: 500, letterSpacing: '0.1em',
                 textTransform: 'uppercase', color: '#111',
+                whiteSpace: 'nowrap',
               }}>
                 Photolux Oxford
               </span>
@@ -238,14 +261,24 @@ export function Header() {
           </Link>
 
           {/* Center nav — desktop only (visibility via responsive.css, not Tailwind `hidden`) */}
-          <nav className="header-desktop-flex" style={{ gap: 28, alignItems: 'center' }}>
+          <nav
+            className="header-desktop-flex"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              gap: 'clamp(10px, 1.2vw, 20px)',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexWrap: 'nowrap',
+            }}
+          >
             {showAppNav ? (
               <>
                 <NavHoverLink to="/" muted>
                   Home
                 </NavHoverLink>
                 <NavHoverLink to="/book" muted active={location.pathname === '/book'}>
-                  Request a Session
+                  {requestSessionLabel}
                 </NavHoverLink>
                 <Link to="/dashboard" style={bookingsCtaStyle()}>
                   My Bookings
@@ -288,7 +321,7 @@ export function Header() {
                   Studio
                 </Link>
                 <NavHoverLink to="/book" muted active={location.pathname === '/book'}>
-                  Request a Session
+                  {requestSessionLabel}
                 </NavHoverLink>
                 {showAccountLinks && (
                   <>
@@ -314,8 +347,9 @@ export function Header() {
 
           {/* Right: desktop CTAs + mobile burger */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 16,
-            minWidth: 44, justifyContent: 'flex-end', zIndex: 1,
+            display: 'flex', alignItems: 'center', gap: 'clamp(10px, 1.2vw, 16px)',
+            flexShrink: 0, justifyContent: 'flex-end', zIndex: 1,
+            marginLeft: 'auto',
           }}>
 
             <Link to="/editing" className="header-desktop-inline" style={desktopNavLinkStyle()}>
@@ -335,20 +369,22 @@ export function Header() {
               </Link>
             )}
 
-            <div className="header-desktop-block" style={{ width: 1, height: 16, background: '#ddd' }} />
+            <div className="header-desktop-block" style={{ width: 1, height: 16, background: '#ddd', flexShrink: 0 }} />
 
             {user ? (
               <button
                 onClick={handleLogout}
                 className="header-desktop-inline"
                 style={{
-                  padding: '8px 18px',
+                  padding: '7px 14px',
                   background: '#111', color: '#fff',
                   border: 'none',
                   fontFamily: FONT,
-                  fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
+                  fontSize: 10, fontWeight: 500, letterSpacing: '0.08em',
                   textTransform: 'uppercase', cursor: 'pointer',
                   lineHeight: 1,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
                 }}
               >
                 Log Out
@@ -356,21 +392,25 @@ export function Header() {
             ) : (
               <>
                 <Link to="/login" className="header-desktop-inline" style={{
-                  padding: '7px 16px',
+                  padding: '7px 14px',
                   border: '1px solid #111', color: '#111',
                   fontFamily: FONT,
-                  fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
+                  fontSize: 10, fontWeight: 500, letterSpacing: '0.08em',
                   textTransform: 'uppercase', textDecoration: 'none',
                   transition: 'background 0.2s, color 0.2s',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
                 }}>
                   Log In
                 </Link>
                 <Link to="/register" className="header-desktop-inline" style={{
-                  padding: '8px 18px',
+                  padding: '7px 14px',
                   background: '#111', color: '#fff',
                   fontFamily: FONT,
-                  fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
+                  fontSize: 10, fontWeight: 500, letterSpacing: '0.08em',
                   textTransform: 'uppercase', textDecoration: 'none',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
                 }}>
                   Register
                 </Link>
