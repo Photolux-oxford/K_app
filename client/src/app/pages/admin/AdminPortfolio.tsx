@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useState, type DragEvent, type MouseEvent } from 'react';
 import { AdminLayout } from '../../components/admin/AdminLayout';
 import { HomepagePreview } from '../../components/admin/HomepagePreview';
 import { HomepagePreviewModal } from '../../components/admin/HomepagePreviewModal';
@@ -387,6 +387,7 @@ function HeroTab({ loadAll, onPreview }: { loadAll: () => Promise<unknown>; onPr
   const [dragItemId, setDragItemId] = useState<number | null>(null);
   const [editingSlot, setEditingSlot] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pickingFocalPoint, setPickingFocalPoint] = useState(false);
 
   const load = useCallback(async () => {
     const [s, items] = await Promise.all([
@@ -408,6 +409,7 @@ function HeroTab({ loadAll, onPreview }: { loadAll: () => Promise<unknown>; onPr
   const clearSlot = async (slotNumber: number) => {
     await api.delete(`/admin/portfolio/hero/${slotNumber}/`);
     setEditingSlot(null);
+    setPickingFocalPoint(false);
     await load();
     await loadAll();
   };
@@ -447,7 +449,12 @@ function HeroTab({ loadAll, onPreview }: { loadAll: () => Promise<unknown>; onPr
               position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: '#000', overflow: 'hidden', cursor: slot.portfolio_item ? 'pointer' : 'default',
             }}
-            onClick={() => { if (slot.portfolio_item) setEditingSlot(slot.slot_number); }}
+            onClick={() => {
+              if (slot.portfolio_item) {
+                setEditingSlot(slot.slot_number);
+                setPickingFocalPoint(false);
+              }
+            }}
           >
             <span style={{
               position: 'absolute', top: 8, left: 8, fontSize: 10, color: '#fff',
@@ -482,25 +489,109 @@ function HeroTab({ loadAll, onPreview }: { loadAll: () => Promise<unknown>; onPr
           border: '1px solid #e5e7eb', background: '#fafafa', padding: 24, marginBottom: 32,
         }}>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-            {/* Live preview */}
-            <div style={{
-              width: 320, aspectRatio: '16/9', background: '#000', overflow: 'hidden', flexShrink: 0,
-              position: 'relative',
-            }}>
-              <img
-                src={editSlot.portfolio_item.image_url}
-                alt=""
-                style={{
-                  width: '100%', height: '100%',
-                  objectFit: editSlot.fit_mode,
-                  objectPosition: `${editSlot.position_x}% ${editSlot.position_y}%`,
+            {/* Full-photo pick surface — natural aspect so click % matches object-position */}
+            <div style={{ flexShrink: 0 }}>
+              <p style={{
+                fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase',
+                margin: '0 0 8px',
+              }}>
+                Focal point
+              </p>
+              <div
+                role={pickingFocalPoint ? 'button' : undefined}
+                onClick={(e: MouseEvent<HTMLDivElement>) => {
+                  if (!pickingFocalPoint || saving) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (rect.width <= 0 || rect.height <= 0) return;
+                  const x = Math.round(Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100)));
+                  const y = Math.round(Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100)));
+                  setSlots(prev => prev.map(s =>
+                    s.slot_number === editSlot.slot_number ? { ...s, position_x: x, position_y: y } : s
+                  ));
+                  void patchSlot(editSlot.slot_number, { position_x: x, position_y: y });
                 }}
-              />
+                style={{
+                  position: 'relative',
+                  display: 'inline-block',
+                  maxWidth: 320,
+                  background: '#000',
+                  cursor: pickingFocalPoint ? 'crosshair' : 'default',
+                  outline: pickingFocalPoint ? '2px solid #111' : 'none',
+                  outlineOffset: 2,
+                }}
+              >
+                <img
+                  src={editSlot.portfolio_item.image_url}
+                  alt=""
+                  draggable={false}
+                  style={{
+                    display: 'block',
+                    maxWidth: 320,
+                    maxHeight: 280,
+                    width: 'auto',
+                    height: 'auto',
+                    pointerEvents: 'none',
+                    userSelect: 'none',
+                  }}
+                />
+                {/* Focal-point marker */}
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    left: `${editSlot.position_x}%`,
+                    top: `${editSlot.position_y}%`,
+                    transform: 'translate(-50%, -50%)',
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.95)',
+                    border: '2px solid #111',
+                    boxShadow: '0 0 0 1px rgba(255,255,255,0.6)',
+                    pointerEvents: 'none',
+                    zIndex: 2,
+                  }}
+                />
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    left: `${editSlot.position_x}%`,
+                    top: `${editSlot.position_y}%`,
+                    transform: 'translate(-50%, -50%)',
+                    width: 22,
+                    height: 22,
+                    borderRadius: '50%',
+                    border: '1px solid rgba(255,255,255,0.85)',
+                    pointerEvents: 'none',
+                    zIndex: 1,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Phone crop preview */}
+            <div style={{ flexShrink: 0 }}>
+              <p style={{
+                fontSize: 10, color: '#888', letterSpacing: '0.08em', textTransform: 'uppercase',
+                margin: '0 0 8px',
+              }}>
+                Phone preview
+              </p>
               <div style={{
-                position: 'absolute', inset: 0,
-                background: 'linear-gradient(to bottom, rgba(0,0,0,0.35), rgba(0,0,0,0.55))',
-                pointerEvents: 'none',
-              }} />
+                width: 150, aspectRatio: '9 / 16', background: '#000', overflow: 'hidden',
+                position: 'relative', border: '1px solid #ddd',
+              }}>
+                <img
+                  src={editSlot.portfolio_item.image_url}
+                  alt=""
+                  style={{
+                    width: '100%', height: '100%',
+                    objectFit: editSlot.fit_mode,
+                    objectPosition: `${editSlot.position_x}% ${editSlot.position_y}%`,
+                  }}
+                />
+              </div>
             </div>
 
             {/* Controls */}
@@ -511,6 +602,30 @@ function HeroTab({ loadAll, onPreview }: { loadAll: () => Promise<unknown>; onPr
               }}>
                 Slot {editSlot.slot_number} — {editSlot.portfolio_item.title || 'Untitled'}
               </h3>
+
+              {/* Focal point picker toggle */}
+              <div style={{ marginBottom: 20 }}>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setPickingFocalPoint(prev => !prev)}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: 11,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    border: '1px solid #111',
+                    background: pickingFocalPoint ? '#111' : '#fff',
+                    color: pickingFocalPoint ? '#fff' : '#111',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {pickingFocalPoint ? 'Picking… click the photo' : 'Set focal point'}
+                </button>
+                <p style={{ fontSize: 11, color: '#888', margin: '8px 0 0', lineHeight: 1.4 }}>
+                  Click the face; phone preview shows the mobile crop.
+                </p>
+              </div>
 
               {/* Fit mode toggle */}
               <div style={{ marginBottom: 20 }}>
@@ -587,12 +702,22 @@ function HeroTab({ loadAll, onPreview }: { loadAll: () => Promise<unknown>; onPr
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() => patchSlot(editSlot.slot_number, { position_x: 50, position_y: 50, fit_mode: 'cover' })}
+                  onClick={() => {
+                    setPickingFocalPoint(false);
+                    void patchSlot(editSlot.slot_number, { position_x: 50, position_y: 50, fit_mode: 'cover' });
+                  }}
                   style={btnGhost}
                 >
                   Reset to center
                 </button>
-                <button type="button" onClick={() => setEditingSlot(null)} style={btnPrimary}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPickingFocalPoint(false);
+                    setEditingSlot(null);
+                  }}
+                  style={btnPrimary}
+                >
                   Done
                 </button>
               </div>
