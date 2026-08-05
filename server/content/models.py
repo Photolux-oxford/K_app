@@ -30,6 +30,10 @@ class PortfolioItem(models.Model):
     )
     image = models.ImageField(upload_to='portfolio/')
     published = models.BooleanField(default=False)
+    show_in_portfolio = models.BooleanField(
+        default=True,
+        help_text='If off (and published), the photo can still appear in the hero slideshow only.',
+    )
     order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 

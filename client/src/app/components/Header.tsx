@@ -5,8 +5,8 @@ import { useNotificationContext } from '../context/NotificationContext';
 import { PageBackButton } from './PageBackButton';
 import gsap from 'gsap';
 
-const NAV_LINKS = [
-  { label: 'Portfolio', id: 'portfolio' },
+const NAV_LINKS: { label: string; id?: string; to?: string }[] = [
+  { label: 'Portfolio', to: '/portfolio' },
   { label: 'Services',  id: 'services'  },
   { label: 'About',     id: 'about'     },
   { label: 'Contact',   id: 'contact'   },
@@ -294,23 +294,37 @@ export function Header() {
               </>
             ) : (
               <>
-                {NAV_LINKS.map(({ label, id }) => (
-                  <button
-                    key={id}
-                    onClick={() => {
-                      if (location.pathname !== '/') {
-                        navigate('/');
-                        setTimeout(() => scrollTo(id), 350);
-                      } else {
-                        scrollTo(id);
-                      }
-                    }}
-                    style={desktopMutedNavStyle()}
-                    onMouseEnter={e => (e.currentTarget.style.color = '#111')}
-                    onMouseLeave={e => (e.currentTarget.style.color = '#444')}
-                  >
-                    {label}
-                  </button>
+                {NAV_LINKS.map(({ label, id, to }) => (
+                  to ? (
+                    <Link
+                      key={to}
+                      to={to}
+                      style={desktopMutedNavStyle(location.pathname === to)}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#111')}
+                      onMouseLeave={e => {
+                        if (location.pathname !== to) e.currentTarget.style.color = '#444';
+                      }}
+                    >
+                      {label}
+                    </Link>
+                  ) : (
+                    <button
+                      key={id}
+                      onClick={() => {
+                        if (location.pathname !== '/') {
+                          navigate('/');
+                          setTimeout(() => scrollTo(id!), 350);
+                        } else {
+                          scrollTo(id!);
+                        }
+                      }}
+                      style={desktopMutedNavStyle()}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#111')}
+                      onMouseLeave={e => (e.currentTarget.style.color = '#444')}
+                    >
+                      {label}
+                    </button>
+                  )
                 ))}
                 <Link
                   to="/service-area"
@@ -500,14 +514,25 @@ export function Header() {
             </>
           ) : (
             <>
-              {NAV_LINKS.map(({ label, id }) => (
-                <button
-                  key={id}
-                  onClick={() => handleNavClick(id)}
-                  style={overlayLinkStyle}
-                >
-                  {label}
-                </button>
+              {NAV_LINKS.map(({ label, id, to }) => (
+                to ? (
+                  <Link
+                    key={to}
+                    to={to}
+                    onClick={closeMenu}
+                    style={overlayLinkStyle}
+                  >
+                    {label}
+                  </Link>
+                ) : (
+                  <button
+                    key={id}
+                    onClick={() => handleNavClick(id!)}
+                    style={overlayLinkStyle}
+                  >
+                    {label}
+                  </button>
+                )
               ))}
               <Link to="/service-area" onClick={closeMenu} style={overlayLinkStyle}>
                 Studio

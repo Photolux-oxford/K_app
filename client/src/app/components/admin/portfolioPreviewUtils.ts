@@ -13,6 +13,7 @@ export interface AdminPortfolioItem {
   category_id: number | null;
   category_name: string | null;
   published: boolean;
+  show_in_portfolio: boolean;
   order: number;
   hero_slot: number | null;
 }
@@ -49,7 +50,7 @@ export function buildPreviewFromAdmin(
     }));
 
   const published = merged
-    .filter(i => i.published && i.image_url)
+    .filter(i => i.published && i.show_in_portfolio !== false && i.image_url)
     .sort((a, b) => a.order - b.order);
 
   const portfolioItems: PreviewPortfolioItem[] = published.map(i => {

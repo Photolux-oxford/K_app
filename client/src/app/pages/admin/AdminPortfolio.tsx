@@ -190,6 +190,7 @@ function LibraryTab({ items, categories, slots, loadAll, draftItem, setDraftItem
     await api.patch(`/admin/portfolio/items/${selectedOrDraft.id}/`, {
       category: selectedOrDraft.category_id,
       published: selectedOrDraft.published,
+      show_in_portfolio: selectedOrDraft.show_in_portfolio,
       title: selectedOrDraft.title,
     });
     await loadAll();
@@ -259,6 +260,18 @@ function LibraryTab({ items, categories, slots, loadAll, draftItem, setDraftItem
                 padding: '2px 4px', letterSpacing: '0.05em',
               }}>HERO {item.hero_slot}</span>
             )}
+            {!item.show_in_portfolio && item.published && item.hero_slot && (
+              <span style={{
+                position: 'absolute', bottom: 4, left: 4, fontSize: 8, background: '#444', color: '#fff',
+                padding: '2px 4px', letterSpacing: '0.05em',
+              }}>SLIDESHOW</span>
+            )}
+            {!item.show_in_portfolio && item.published && !item.hero_slot && (
+              <span style={{
+                position: 'absolute', bottom: 4, left: 4, fontSize: 8, background: '#888', color: '#fff',
+                padding: '2px 4px', letterSpacing: '0.05em',
+              }}>HIDDEN</span>
+            )}
           </button>
         ))}
       </div>
@@ -287,6 +300,14 @@ function LibraryTab({ items, categories, slots, loadAll, draftItem, setDraftItem
               onChange={e => setDraftItem({ ...selectedOrDraft, published: e.target.checked })}
             />
             Published
+          </label>
+          <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }} title="Off = slideshow only when assigned to a hero slot">
+            <input
+              type="checkbox"
+              checked={selectedOrDraft.show_in_portfolio !== false}
+              onChange={e => setDraftItem({ ...selectedOrDraft, show_in_portfolio: e.target.checked })}
+            />
+            In portfolio
           </label>
           <button type="button" onClick={onPreview} style={btnGhost}>Preview</button>
           <button type="button" onClick={saveSelected} style={btnPrimary}>Save</button>
@@ -325,7 +346,7 @@ function GridTab({ categories, loadItems }: { categories: AdminCategory[]; loadI
     const cats = await api.get<AdminCategory[]>('/admin/portfolio/categories/');
     if (!activeCat && cats.length) setActiveCat(cats[0].id);
     const all = await api.get<AdminPortfolioItem[]>('/admin/portfolio/items/?published=true');
-    setItems(all);
+    setItems(all.filter(i => i.show_in_portfolio !== false));
   }, [activeCat]);
 
   useEffect(() => { load().catch(() => {}); }, [load]);
@@ -727,7 +748,9 @@ function HeroTab({ loadAll, onPreview }: { loadAll: () => Promise<unknown>; onPr
       )}
 
       <p style={{ fontSize: 11, color: '#888', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-        Drag a published photo into a slot{slots.some(s => s.portfolio_item) ? ' · click a slot to adjust position' : ''}
+        Drag a published photo into a slot
+        {slots.some(s => s.portfolio_item) ? ' · click a slot to adjust position' : ''}
+        {' · turn off “In portfolio” in Library for slideshow-only photos'}
       </p>
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8 }}>
         {library.map(item => (

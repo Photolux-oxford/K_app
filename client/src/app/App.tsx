@@ -18,6 +18,7 @@ import { Toaster } from './components/ui/sonner';
 import { BookPage } from './pages/BookPage';
 import { BookingIntroPage } from './pages/BookingIntroPage';
 import { EditingPage } from './pages/EditingPage';
+import { PortfolioPage } from './pages/PortfolioPage';
 import { Cursor } from './components/Cursor';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
@@ -51,6 +52,7 @@ export default function App() {
           <Routes>
             {/* Public */}
             <Route path="/"            element={<HomePage />} />
+            <Route path="/portfolio"   element={<PortfolioPage />} />
             <Route path="/login"       element={<LoginPage />} />
             <Route path="/register"    element={<RegisterPage />} />
             <Route path="/service-area" element={<ServiceAreaPage />} />

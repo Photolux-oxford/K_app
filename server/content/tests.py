@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from rest_framework.test import APIClient as DRFClient
 from .models import (
     Category, PortfolioItem, AvailabilitySlot, BookingRequest,
-    EditingRequest, EditingFile, Payment, Message, ServiceArea
+    EditingRequest, EditingFile, Payment, Message, ServiceArea, HeroSlot
 )
 import datetime
 from channels.testing import WebsocketCommunicator
@@ -901,6 +901,33 @@ class PortfolioAPITests(TestCase):
         res = self.client.get('/api/portfolio/')
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(res.data), 1)
+
+    def test_public_portfolio_excludes_slideshow_only(self):
+        PortfolioItem.objects.create(
+            title='In grid', category=self.cat, image='portfolio/c.jpg',
+            published=True, show_in_portfolio=True,
+        )
+        PortfolioItem.objects.create(
+            title='Hero only', category=self.cat, image='portfolio/d.jpg',
+            published=True, show_in_portfolio=False,
+        )
+        res = self.client.get('/api/portfolio/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data), 1)
+        self.assertEqual(res.data[0]['title'], 'In grid')
+
+    def test_public_hero_includes_slideshow_only(self):
+        item = PortfolioItem.objects.create(
+            title='Hero only', category=self.cat, image='portfolio/e.jpg',
+            published=True, show_in_portfolio=False,
+        )
+        slot = HeroSlot.objects.get(slot_number=1)
+        slot.portfolio_item = item
+        slot.save()
+        res = self.client.get('/api/portfolio/hero/')
+        self.assertEqual(res.status_code, 200)
+        titles = [s['title'] for s in res.data]
+        self.assertIn('Hero only', titles)
 
     def test_admin_category_crud(self):
         self.client.force_authenticate(user=self.staff)

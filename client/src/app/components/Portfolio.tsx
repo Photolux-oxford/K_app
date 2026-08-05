@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { api } from '../lib/api';
@@ -14,42 +15,22 @@ interface PortfolioItem {
   order: number;
 }
 
-interface Category {
-  id: number;
-  name: string;
-  slug: string;
-  published_count: number;
-}
+const TEASER_LIMIT = 6;
 
 export function Portfolio() {
   const [items, setItems] = useState<PortfolioItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string>('All');
   const [loading, setLoading] = useState(true);
   const gridRef = useRef<HTMLDivElement>(null);
-  const sectionRef = useRef<HTMLElement>(null);
   const titleRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(() => {
-    Promise.all([
-      api.get<PortfolioItem[]>('/portfolio/'),
-      api.get<Category[]>('/portfolio/categories/'),
-    ])
-      .then(([portfolio, cats]) => {
-        setItems(portfolio);
-        setCategories(cats);
-      })
+    api.get<PortfolioItem[]>('/portfolio/')
+      .then(portfolio => setItems(portfolio))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  useEffect(() => {
-    const onFocus = () => fetchData();
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [fetchData]);
 
   useEffect(() => {
     if (!titleRef.current) return;
@@ -74,25 +55,20 @@ export function Portfolio() {
       });
     });
     return () => ctx.revert();
-  }, [loading, activeCategory]);
+  }, [loading, items.length]);
 
-  const filtered = activeCategory === 'All'
-    ? items
-    : items.filter(item => item.category_slug === activeCategory);
-
-  const filterPills = ['All', ...categories.map(c => c.slug)];
+  const teaser = items.slice(0, TEASER_LIMIT);
 
   return (
     <section
       id="portfolio"
-      ref={sectionRef}
       style={{
         background: '#fff', padding: '120px 0',
         fontFamily: "'Helvetica Neue', Arial, sans-serif",
       }}
     >
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 32px' }}>
-        <div ref={titleRef} style={{ marginBottom: 56 }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 32px' }}>
+        <div ref={titleRef} style={{ marginBottom: 48 }}>
           <p style={{
             fontSize: 10, letterSpacing: '0.25em', textTransform: 'uppercase',
             color: '#888', marginBottom: 12, fontWeight: 500,
@@ -101,36 +77,27 @@ export function Portfolio() {
           </p>
           <h2 style={{
             fontSize: 'clamp(36px, 5vw, 64px)', fontWeight: 300,
-            color: '#111', letterSpacing: '-0.02em', margin: 0,
+            color: '#111', letterSpacing: '-0.02em', margin: '0 0 24px',
           }}>
             Selected Work
           </h2>
+          <Link
+            to="/portfolio"
+            style={{
+              display: 'inline-block',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: '#111',
+              textDecoration: 'none',
+              borderBottom: '1px solid #111',
+              paddingBottom: 4,
+            }}
+          >
+            View full portfolio
+          </Link>
         </div>
-
-        {categories.length > 0 && (
-          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 48 }}>
-            {filterPills.map(slug => {
-              const label = slug === 'All' ? 'All' : (categories.find(c => c.slug === slug)?.name ?? slug);
-              return (
-                <button
-                  key={slug}
-                  onClick={() => setActiveCategory(slug)}
-                  style={{
-                    padding: '8px 20px',
-                    background: activeCategory === slug ? '#111' : 'transparent',
-                    color: activeCategory === slug ? '#fff' : '#888',
-                    border: activeCategory === slug ? '1px solid #111' : '1px solid #ddd',
-                    fontFamily: "'Helvetica Neue', Arial, sans-serif",
-                    fontSize: 11, fontWeight: 500, letterSpacing: '0.1em',
-                    textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.2s',
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        )}
 
         {!loading && items.length === 0 && (
           <p style={{ color: '#888', fontSize: 14, textAlign: 'center', padding: '48px 0' }}>
@@ -140,47 +107,54 @@ export function Portfolio() {
 
         <div
           ref={gridRef}
-          className="portfolio-grid"
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 20,
+            width: '100%',
+            marginBottom: items.length > TEASER_LIMIT ? 40 : 0,
+          }}
         >
-          {filtered.map(item => (
+          {teaser.map(item => (
             <div
               key={item.id}
               className="portfolio-card"
-              style={{
-                position: 'relative', overflow: 'hidden', aspectRatio: '1',
-                background: '#f5f5f5', cursor: 'pointer',
-              }}
-              onMouseEnter={e => gsap.to(e.currentTarget.querySelector('img'), { scale: 0.96, duration: 0.4, ease: 'power2.out' })}
-              onMouseLeave={e => gsap.to(e.currentTarget.querySelector('img'), { scale: 1.04, duration: 0.4, ease: 'power2.out' })}
+              style={{ width: '100%', background: '#f5f5f5' }}
             >
               {item.image_url && (
                 <img
                   src={item.image_url}
                   alt={item.title}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', transform: 'scale(1.04)' }}
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                  }}
                 />
-              )}
-              {item.category_name && (
-                <div style={{
-                  position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', padding: 16,
-                }}>
-                  <span style={{
-                    fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase',
-                    color: '#fff', fontWeight: 500, opacity: 0,
-                  }} className="portfolio-tag">
-                    {item.category_name}
-                  </span>
-                </div>
               )}
             </div>
           ))}
         </div>
 
-        {filtered.length === 0 && items.length > 0 && !loading && (
-          <p style={{ color: '#888', fontSize: 14, textAlign: 'center', padding: '48px 0' }}>
-            No images in this category yet.
-          </p>
+        {items.length > TEASER_LIMIT && (
+          <div style={{ textAlign: 'center' }}>
+            <Link
+              to="/portfolio"
+              style={{
+                display: 'inline-block',
+                padding: '12px 28px',
+                background: '#111',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                textDecoration: 'none',
+              }}
+            >
+              View full portfolio
+            </Link>
+          </div>
         )}
       </div>
     </section>

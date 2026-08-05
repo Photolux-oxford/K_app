@@ -101,6 +101,7 @@ def _serialize_item(request, item):
         'category_id': item.category_id,
         'category_name': item.category.name if item.category else None,
         'published': item.published,
+        'show_in_portfolio': item.show_in_portfolio,
         'order': item.order,
         'created_at': item.created_at.isoformat(),
     }
@@ -128,7 +129,9 @@ def _hero_slot_for_item(item_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def portfolio_list(request):
-    qs = PortfolioItem.objects.filter(published=True).select_related('category')
+    qs = PortfolioItem.objects.filter(
+        published=True, show_in_portfolio=True,
+    ).select_related('category')
     slug = request.query_params.get('category')
     if slug:
         qs = qs.filter(category__slug=slug)
@@ -141,7 +144,10 @@ def portfolio_list(request):
 def portfolio_categories_public(request):
     cats = (
         Category.objects.annotate(
-            published_count=Count('items', filter=Q(items__published=True))
+            published_count=Count(
+                'items',
+                filter=Q(items__published=True, items__show_in_portfolio=True),
+            )
         )
         .filter(published_count__gt=0)
         .order_by('order', 'name')
@@ -279,6 +285,7 @@ def admin_portfolio_items(request):
         category=category,
         image=image,
         published=request.data.get('published', 'false').lower() == 'true',
+        show_in_portfolio=request.data.get('show_in_portfolio', 'true').lower() != 'false',
     )
     data = _serialize_item(request, item)
     data['hero_slot'] = None
@@ -303,6 +310,12 @@ def admin_portfolio_item_detail(request, pk):
         item.title = request.data.get('title', '').strip()
     if 'published' in request.data:
         item.published = bool(request.data.get('published'))
+    if 'show_in_portfolio' in request.data:
+        val = request.data.get('show_in_portfolio')
+        if isinstance(val, str):
+            item.show_in_portfolio = val.lower() in ('true', '1', 'yes')
+        else:
+            item.show_in_portfolio = bool(val)
     if 'order' in request.data:
         item.order = int(request.data['order'])
     if 'category' in request.data:
