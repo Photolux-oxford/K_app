@@ -211,9 +211,11 @@ export function Header() {
       <header style={{
         position: 'fixed', top: 0, left: 0, right: 0,
         zIndex: menuOpen ? 2001 : 1000,
-        background: 'rgba(255,255,255,0.92)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(0,0,0,0.06)',
+        background: isHome ? 'rgba(255,255,255,0.42)' : 'rgba(255,255,255,0.92)',
+        backdropFilter: isHome ? 'blur(10px) saturate(1.2)' : 'blur(12px)',
+        WebkitBackdropFilter: isHome ? 'blur(10px) saturate(1.2)' : 'blur(12px)',
+        borderBottom: isHome ? '1px solid rgba(255,255,255,0.25)' : '1px solid rgba(0,0,0,0.06)',
+        transition: 'background 0.25s ease, border-color 0.25s ease',
       }}>
         <div style={{
           width: '100%',
