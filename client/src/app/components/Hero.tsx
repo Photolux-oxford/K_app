@@ -65,7 +65,8 @@ export function Hero() {
   return (
     <section style={{
       position: 'relative',
-      height: 'max(100vh, calc(100vw * 5 / 4))',
+      /* Slightly taller than the viewport so a short scroll can reveal hands */
+      height: 'calc(100vh + 2cm)',
       minHeight: 600,
       overflow: 'hidden',
       background: '#1a1a1a',

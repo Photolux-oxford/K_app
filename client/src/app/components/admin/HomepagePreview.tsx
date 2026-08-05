@@ -54,6 +54,8 @@ export function HomepagePreview({
 
   const pills = ['All', ...categories.map(c => c.slug)];
 
+  const heroH = compact ? 320 : 500;
+
   return (
     <div style={{
       fontFamily: "'Helvetica Neue', Arial, sans-serif",
@@ -61,15 +63,8 @@ export function HomepagePreview({
       border: '1px solid #e8e8e8',
       overflow: 'hidden',
     }}>
-      {/* Hero — non-compact uses 4:5 to mirror the taller public frame */}
-      <section style={{
-        position: 'relative',
-        background: '#1a1a1a',
-        overflow: 'hidden',
-        ...(compact
-          ? { height: 320 }
-          : { aspectRatio: '4 / 5', width: '100%', minHeight: 480 }),
-      }}>
+      {/* Hero */}
+      <section style={{ position: 'relative', height: heroH, background: '#1a1a1a', overflow: 'hidden' }}>
         {slides.length > 0 ? slides.map((slide, i) => (
           <img
             key={i}
