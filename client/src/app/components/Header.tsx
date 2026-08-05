@@ -108,7 +108,7 @@ function NavHoverLink({
 }
 
 const overlayLinkStyle: CSSProperties = {
-  fontSize: 'clamp(28px, 8vw, 40px)',
+  fontSize: 'clamp(22px, 6.5vw, 32px)',
   fontWeight: 300,
   letterSpacing: '-0.01em',
   color: '#111',
@@ -246,21 +246,22 @@ export function Header() {
             </Link>
           </div>
 
-          {/* Center brand — mobile only */}
-          <Link
-            to="/"
-            className="header-mobile-only"
-            onClick={closeMenu}
-            style={{
-              textDecoration: 'none',
-              position: 'absolute',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 2001,
-            }}
-          >
-            {brandMark}
-          </Link>
+          {/* Center brand — mobile only; hidden while menu is open so it doesn't cover Portfolio */}
+          {!menuOpen && (
+            <Link
+              to="/"
+              className="header-mobile-only"
+              style={{
+                textDecoration: 'none',
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 2001,
+              }}
+            >
+              {brandMark}
+            </Link>
+          )}
 
           {/* Center nav — desktop only (visibility via responsive.css, not Tailwind `hidden`) */}
           <nav
@@ -489,14 +490,18 @@ export function Header() {
           position: 'fixed', inset: 0, zIndex: 2000,
           background: '#fff',
           display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          padding: '88px 24px 48px',
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
           opacity: 0, pointerEvents: 'none',
           fontFamily: FONT,
         }}
       >
         <nav style={{
           display: 'flex', flexDirection: 'column',
-          alignItems: 'center', gap: 24, marginBottom: 48,
+          alignItems: 'center', gap: 18, marginBottom: 32,
         }}>
           {showAppNav ? (
             <>
