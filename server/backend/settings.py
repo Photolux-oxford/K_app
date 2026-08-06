@@ -96,6 +96,7 @@ try:
 except ImportError:
     pass
 MIDDLEWARE += [
+    'backend.geo_block_middleware.GeoBlockMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -202,6 +203,11 @@ EMAIL_VERIFICATION_MINUTES = env.int('EMAIL_VERIFICATION_MINUTES', default=15)
 # Google Sign-In (ID token audience). Client secret not required for GIS button flow.
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 GOOGLE_CLIENT_SECRET = env('GOOGLE_CLIENT_SECRET', default='')
+
+# Block application API use from listed ISO country codes (e.g. MX = Mexico).
+# Localhost / private IPs are never blocked. Lookup failures fail open.
+GEO_BLOCK_ENABLED = env.bool('GEO_BLOCK_ENABLED', default=True)
+BLOCKED_COUNTRIES = env.list('BLOCKED_COUNTRIES', default=['MX'])
 
 CORS_ALLOWED_ORIGINS = env.list(
     'CORS_ALLOWED_ORIGINS',

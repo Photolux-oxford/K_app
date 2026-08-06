@@ -21,7 +21,7 @@ export function Footer() {
         </span>
 
         <a
-          href="mailto:hello@kaytubillla.com"
+          href="mailto:photolux2411@gmail.com"
           style={{
             fontSize: 13, color: 'rgba(255,255,255,0.6)',
             textDecoration: 'none', letterSpacing: '0.02em',
@@ -30,7 +30,7 @@ export function Footer() {
           onMouseEnter={e => ((e.target as HTMLAnchorElement).style.color = '#fff')}
           onMouseLeave={e => ((e.target as HTMLAnchorElement).style.color = 'rgba(255,255,255,0.6)')}
         >
-          hello@kaytubillla.com
+          photolux2411@gmail.com
         </a>
 
         <span style={{

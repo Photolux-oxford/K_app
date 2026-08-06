@@ -1220,3 +1220,29 @@ class AccessInstructionsBookingTests(TestCase):
         self.assertEqual(booking.preferred_schedule, 'Saturday afternoon')
         self.assertFalse(booking.is_home_visit)
         self.assertEqual(booking.access_instructions, '')
+
+
+class GeoBlockMiddlewareTests(TestCase):
+    def setUp(self):
+        self.client = DRFClient()
+
+    def test_blocks_mexico_via_cloudflare_header(self):
+        res = self.client.get(
+            '/api/portfolio/',
+            HTTP_CF_IPCOUNTRY='MX',
+            REMOTE_ADDR='187.188.1.1',
+        )
+        self.assertEqual(res.status_code, 403)
+        self.assertEqual(res.json().get('code'), 'region_blocked')
+
+    def test_allows_non_blocked_country(self):
+        res = self.client.get(
+            '/api/portfolio/',
+            HTTP_CF_IPCOUNTRY='GB',
+            REMOTE_ADDR='81.2.69.142',
+        )
+        self.assertEqual(res.status_code, 200)
+
+    def test_allows_localhost(self):
+        res = self.client.get('/api/portfolio/', REMOTE_ADDR='127.0.0.1')
+        self.assertEqual(res.status_code, 200)

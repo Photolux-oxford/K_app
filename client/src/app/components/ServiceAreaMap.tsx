@@ -83,7 +83,7 @@ export function ServiceAreaMap() {
           <Popup>
             {hasStudioPin ? (
               <>
-                <strong>{studio!.studio_name || 'Photolux Oxford Studio'}</strong>
+                <strong>Photolux Studio</strong>
                 {studio!.studio_address && (
                   <>
                     <br />
@@ -104,7 +104,7 @@ export function ServiceAreaMap() {
 
       <div style={{ marginTop: 12, fontSize: 12, color: '#777', lineHeight: 1.5 }}>
         {hasStudioPin
-          ? (studio!.studio_address || studio!.studio_name || 'Photolux Oxford studio location')
+          ? (studio!.studio_address || 'Photolux Studio location')
           : 'Map pin: Oxford railway station (studio is nearby — full address on quote).'}
       </div>
     </div>
